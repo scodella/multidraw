@@ -19,15 +19,13 @@ namespace multidraw {
   public:
     ExprFiller(TTreeFormula* reweight = nullptr);
     ExprFiller(ExprFiller const&);
-    virtual ~ExprFiller();
-
-    void ownFormulas(bool b) { ownFormulas_ = b; }
+    virtual ~ExprFiller() {}
 
     unsigned getNdim() const { return exprs_.size(); }
     TTreeFormula const* getExpr(unsigned iE = 0) const { return exprs_.at(iE); }
     TTreeFormula* getExpr(unsigned iE = 0) { return exprs_.at(iE); }
     TTreeFormula const* getReweight() const { return reweight_; }
-    void updateTree();
+
     void fill(std::vector<double> const& eventWeights, std::vector<bool> const* = nullptr);
 
     virtual TObject const& getObj() const = 0;
@@ -42,7 +40,6 @@ namespace multidraw {
 
     std::vector<TTreeFormula*> exprs_{};
     TTreeFormula* reweight_{nullptr};
-    bool ownFormulas_{false};
     double entryWeight_{1.};
     unsigned counter_{0};
 

@@ -8,49 +8,10 @@ multidraw::ExprFiller::ExprFiller(TTreeFormula* _reweight/* = nullptr*/) :
 {
 }
 
-multidraw::ExprFiller::ExprFiller(ExprFiller const& _orig) :
-  ownFormulas_(_orig.ownFormulas_)
+multidraw::ExprFiller::ExprFiller(ExprFiller const& _orig)
 {
-  if (ownFormulas_) {
-    for (unsigned iD(0); iD != _orig.getNdim(); ++iD) {
-      auto& oexpr(*_orig.getExpr(iD));
-      auto* formula(NewTTreeFormula(oexpr.GetName(), oexpr.GetTitle(), oexpr.GetTree()));
-      if (formula == nullptr)
-        throw std::runtime_error("Failed to compile formula.");
-
-      exprs_.push_back(formula);
-    }
-
-    if (_orig.reweight_ != nullptr) {
-      reweight_ = NewTTreeFormula(_orig.reweight_->GetName(), _orig.reweight_->GetTitle(), _orig.reweight_->GetTree());
-      if (reweight_ == nullptr)
-        throw std::runtime_error("Failed to compile reweight.");
-    }
-  }
-  else {
-    exprs_ = _orig.exprs_;
-    reweight_ = _orig.reweight_;
-  }
-}
-
-multidraw::ExprFiller::~ExprFiller()
-{
-  if (ownFormulas_) {
-    delete reweight_;
-
-    for (auto* expr : exprs_)
-      delete expr;
-  }
-}
-
-void
-multidraw::ExprFiller::updateTree()
-{
-  for (auto* expr : exprs_)
-    expr->UpdateFormulaLeaves();
-
-  if (reweight_ != nullptr)
-    reweight_->UpdateFormulaLeaves();
+  exprs_ = _orig.exprs_;
+  reweight_ = _orig.reweight_;
 }
 
 void
