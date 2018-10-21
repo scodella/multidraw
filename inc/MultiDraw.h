@@ -13,7 +13,6 @@
 #include "TH1.h"
 #include "TString.h"
 
-#include <map>
 #include <vector>
 
 namespace multidraw {
@@ -86,18 +85,20 @@ namespace multidraw {
   private:
     //! Handle addPlot and addTree with the same interface (requires a callback to generate the right object)
     typedef std::function<ExprFiller*(TTreeFormula*)> ObjGen;
-    ExprFiller& addObj_(char const* cutName, char const* reweight, ObjGen const&);
+    ExprFiller& addObj_(TString const& cutName, char const* reweight, ObjGen const&);
+    Cut& findCut_(TString const& cutName) const;
 
     TChain tree_;
     TString weightBranchName_{"weight"};
-
-    std::map<TString, Cut*> cuts_;
-    FormulaLibrary library_;
+    TString evtNumBranchName_{""};
 
     unsigned prescale_{1};
-    TString evtNumBranch_{""};
+
+    std::vector<Cut*> cuts_;
+    FormulaLibrary library_;
 
     double constWeight_{1.};
+
     TTreeFormulaCached* reweightExpr_{nullptr};
     std::function<void(std::vector<double>&)> reweight_;
 

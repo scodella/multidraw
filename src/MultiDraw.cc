@@ -10,6 +10,8 @@
 #include "TError.h"
 #include "TLeafF.h"
 #include "TLeafD.h"
+#include "TLeafI.h"
+#include "TLeafL.h"
 #include "TEntryList.h"
 
 #include <stdexcept>
@@ -22,39 +24,46 @@ multidraw::MultiDraw::MultiDraw(char const* _treeName/* = "events"*/) :
   tree_(_treeName),
   library_(tree_)
 {
-  cuts_.emplace("", new Cut("", []()->bool { return true; }));
+  cuts_.push_back(new Cut("", [](UInt_t)->Double_t { return 1.; }));
 }
 
 multidraw::MultiDraw::~MultiDraw()
 {
-  for (auto& p : cuts_)
-    delete p.second;
+  for (auto* cut : cuts_)
+    delete cut;
 }
 
 void
 multidraw::MultiDraw::setFilter(char const* _expr)
 {
-  cuts_[""]->setFormula(*library_.getFormula(_expr));
+  findCut_("").setFormula(*library_.getFormula(_expr));
 }
 
 void
 multidraw::MultiDraw::addCut(char const* _name, char const* _expr)
 {
-  if (cuts_.count(_name) != 0) {
+  try {
+    findCut_(_name);
+
     std::stringstream ss;
     ss << "Cut named " << _name << " already exists";
     std::cout << ss.str() << std::endl;
     throw std::invalid_argument(ss.str());
   }
+  catch (std::runtime_error&) {
+    // pass
+  }
 
-  cuts_.emplace(_name, new Cut(_name, *library_.getFormula(_expr)));
+  cuts_.push_back(new Cut(_name, *library_.getFormula(_expr)));
 }
 
 void
 multidraw::MultiDraw::setPrescale(unsigned _p, char const* _evtNumBranch/* = ""*/)
 {
+  if (_p == 0)
+    throw std::invalid_argument("Prescale of 0 not allowed");
   prescale_ = _p;
-  evtNumBranch_ = _evtNumBranch;
+  evtNumBranchName_ = _evtNumBranch;
 }
 
 void
@@ -196,17 +205,9 @@ multidraw::MultiDraw::addTree(TTree* _tree, char const* _cutName/* = ""*/, char 
 }
 
 multidraw::ExprFiller&
-multidraw::MultiDraw::addObj_(char const* _cutName, char const* _reweight, ObjGen const& _gen)
+multidraw::MultiDraw::addObj_(TString const& _cutName, char const* _reweight, ObjGen const& _gen)
 {
-  auto cutItr(cuts_.find(_cutName));
-  if (cutItr == cuts_.end()) {
-    std::stringstream ss;
-    ss << "Cut \"" << _cutName << "\" not defined";
-    std::cerr << ss.str() << std::endl;
-    throw std::runtime_error(ss.str());
-  }
-
-  auto& cut(*cutItr->second);
+  auto& cut(findCut_(_cutName));
 
   TTreeFormulaCached* reweightFormula(nullptr);
   if (_reweight != nullptr && std::strlen(_reweight) != 0)
@@ -219,283 +220,195 @@ multidraw::MultiDraw::addObj_(char const* _cutName, char const* _reweight, ObjGe
   return *filler;
 }
 
+multidraw::Cut&
+multidraw::MultiDraw::findCut_(TString const& _cutName) const
+{
+  auto cutItr(std::find_if(cuts_.begin(), cuts_.end(), [&_cutName](Cut* const& _cut)->bool { return _cut->getName() == _cutName; }));
+
+  if (cutItr == cuts_.end()) {
+    std::stringstream ss;
+    ss << "Cut \"" << _cutName << "\" not defined";
+    std::cerr << ss.str() << std::endl;
+    throw std::runtime_error(ss.str());
+  }
+
+  return **cutItr;
+}
+
+
 void
 multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
 {
-  // float* weightF(nullptr);
-  // double weight(1.);
-  // unsigned eventNumber;
-  // TBranch* weightBranch(nullptr);
-  // TBranch* eventNumberBranch(nullptr);
+  long printEvery(10000);
+  if (printLevel_ == 2)
+    printEvery = 10000;
+  else if (printLevel_ == 3)
+    printEvery = 100;
+  else if (printLevel_ >= 4)
+    printEvery = 1;
 
-  // for (auto* plots : {&postFull_, &postBase_, &unconditional_}) {
-  //   for (auto* plot : *plots) {
-  //     plot->setPrintLevel(printLevel_);
-  //     plot->resetCount();
-  //   }
-  // }
+  for (auto* cut : cuts_) {
+    cut->setPrintLevel(printLevel_);
+    cut->resetCount();
+  }
 
-  // std::vector<double> eventWeights;
-  // std::vector<bool>* baseResults(nullptr);
-  // std::vector<bool>* fullResults(nullptr);
+  std::vector<double> eventWeights;
 
-  // if (baseSelection_ && baseSelection_->GetMultiplicity() != 0) {
-  //   if (printLevel_ > 1)
-  //     std::cout << "\n\nBase selection is based on an array." << std::endl;
+  long long iEntry(_firstEntry);
+  long long iEntryMax(_firstEntry + _nEntries);
+  int treeNumber(-1);
 
-  //   baseResults = new std::vector<bool>;
-  // }
-  // if (fullSelection_ && fullSelection_->GetMultiplicity() != 0) {
-  //   if (printLevel_ > 1)
-  //     std::cout << "\nFull selection is based on an array." << std::endl;
+  union FloatingPoint {
+    Float_t f;
+    Double_t d;
+  } weight;
 
-  //   fullResults = new std::vector<bool>;
-  // }
+  std::function<Double_t()> getWeight([]()->Double_t { return 1.; });
 
-  // long printEvery(10000);
-  // if (printLevel_ == 2)
-  //   printEvery = 10000;
-  // else if (printLevel_ == 3)
-  //   printEvery = 100;
-  // else if (printLevel_ >= 4)
-  //   printEvery = 1;
+  union Integer {
+    Int_t i;
+    UInt_t ui;
+    Long64_t l;
+    ULong64_t ul;
+  } evtNum;
 
-  // if (_filter != nullptr && std::strlen(_filter) != 0) {
-  //   tree_.Draw(">>elist", _filter, "entrylist");
-  //   auto* elist(static_cast<TEntryList*>(gDirectory->Get("elist")));
-  //   tree_.SetEntryList(elist);
-  // }
+  // by default, use iEntry as the event number
+  std::function<ULong64_t()> getEvtNum([&iEntry]()->ULong64_t { return iEntry; });
 
-  // long long iEntry(_firstEntry);
-  // long long iEntryMax(_firstEntry + _nEntries);
-  // int treeNumber(-1);
-  // unsigned passBase(0);
-  // unsigned passFull(0);
-  // while (iEntry != iEntryMax) {
-  //   long long iEntryFiltered(tree_.GetEntryNumber(iEntry++));
-  //   if (iEntryFiltered < 0)
-  //     break;
-  //   long long iLocalEntry(tree_.LoadTree(iEntryFiltered));
-  //   if (iLocalEntry < 0)
-  //     break;
+  TBranch* weightBranch(nullptr);
+  TBranch* evtNumBranch(nullptr);
+  
+  while (iEntry != iEntryMax) {
+    long long iLocalEntry(tree_.LoadTree(iEntry));
+    if (iLocalEntry < 0)
+      break;
 
-  //   if (printLevel_ >= 0 && iEntry % printEvery == 1) {
-  //     std::cout << "\r      " << iEntry << " events";
-  //     if (printLevel_ > 2)
-  //       std::cout << std::endl;
-  //   }
+    if (printLevel_ >= 0 && iEntry % printEvery == 0) {
+      std::cout << "\r      " << iEntry << " events";
+      if (printLevel_ > 2)
+        std::cout << std::endl;
+    }
 
-  //   if (treeNumber != tree_.GetTreeNumber()) {
-  //     if (printLevel_ > 1)
-  //       std::cout << "      Opened a new file: " << tree_.GetCurrentFile()->GetName() << std::endl;
+    if (treeNumber != tree_.GetTreeNumber()) {
+      if (printLevel_ > 1)
+        std::cout << "      Opened a new file: " << tree_.GetCurrentFile()->GetName() << std::endl;
 
-  //     treeNumber = tree_.GetTreeNumber();
+      treeNumber = tree_.GetTreeNumber();
 
-  //     if (weightBranchName_.Length() != 0) {
-  //       weightBranch = tree_.GetBranch(weightBranchName_);
-  //       if (!weightBranch)
-  //         throw std::runtime_error(("Could not find branch " + weightBranchName_).Data());
+      if (weightBranchName_.Length() != 0) {
+        weightBranch = tree_.GetBranch(weightBranchName_);
+        if (!weightBranch)
+          throw std::runtime_error(("Could not find branch " + weightBranchName_).Data());
 
-  //       auto* leaves(weightBranch->GetListOfLeaves());
-  //       if (leaves->GetEntries() == 0) // ??
-  //         throw std::runtime_error(("Branch " + weightBranchName_ + " does not have any leaves").Data());
+        auto* leaves(weightBranch->GetListOfLeaves());
+        if (leaves->GetEntries() == 0) // shouldn't happen
+          throw std::runtime_error(("Branch " + weightBranchName_ + " does not have any leaves").Data());
 
-  //       auto* leaf(static_cast<TLeaf*>(leaves->At(0)));
+        weightBranch->SetAddress(&weight);
 
-  //       if (leaf->InheritsFrom(TLeafF::Class())) {
-  //         if (weightF == nullptr)
-  //           weightF = new float;
-  //         weightBranch->SetAddress(weightF);
-  //       }
-  //       else if (leaf->InheritsFrom(TLeafD::Class())) {
-  //         if (weightF != nullptr) {
-  //           // we don't really need to handle a case like this (trees with different weight branch types are mixed), but we can..
-  //           delete weightF;
-  //           weightF = nullptr;
-  //         }
-  //         weightBranch->SetAddress(&weight);
-  //       }
-  //       else
-  //         throw std::runtime_error(("I do not know how to read the leaf type of branch " + weightBranchName_).Data());
-  //     }
+        auto* leaf(static_cast<TLeaf*>(leaves->At(0)));
 
-  //     if (prescale_ > 1) {
-  //       eventNumberBranch = tree_.GetBranch("eventNumber");
-  //       if (!eventNumberBranch)
-  //         throw std::runtime_error("Event number not available");
+        if (leaf->InheritsFrom(TLeafF::Class()))
+          getWeight = [&weight]()->Double_t { return weight.f; };
+        else if (leaf->InheritsFrom(TLeafD::Class()))
+          getWeight = [&weight]()->Double_t { return weight.d; };
+        else
+          throw std::runtime_error(("I do not know how to read the leaf type of branch " + weightBranchName_).Data());
+      }
 
-  //       eventNumberBranch->SetAddress(&eventNumber);
-  //     }
+      if (prescale_ > 1 && evtNumBranchName_.Length() != 0) {
+        evtNumBranch = tree_.GetBranch(evtNumBranchName_);
+        if (!evtNumBranch)
+          throw std::runtime_error(("Could not find branch " + evtNumBranchName_).Data());
 
-  //     for (auto& ff : library_)
-  //       ff.second->UpdateFormulaLeaves();
-  //   }
+        auto* leaves(evtNumBranch->GetListOfLeaves());
+        if (leaves->GetEntries() == 0) // shouldn't happen
+          throw std::runtime_error(("Branch " + evtNumBranchName_ + " does not have any leaves").Data());
 
-  //   if (prescale_ > 1) {
-  //     eventNumberBranch->GetEntry(iLocalEntry);
+        evtNumBranch->SetAddress(&evtNum);
 
-  //     if (eventNumber % prescale_ != 0)
-  //       continue;
-  //   }
+        auto* leaf(static_cast<TLeaf*>(leaves->At(0)));
 
-  //   // Reset formula cache
-  //   for (auto& ff : library_)
-  //     ff.second->ResetCache();
+        if (leaf->InheritsFrom(TLeafI::Class())) {
+          if (leaf->IsUnsigned())
+            getEvtNum = [&evtNum]()->ULong64_t { return evtNum.ui; };
+          else
+            getEvtNum = [&evtNum]()->ULong64_t { return evtNum.i; };
+        }
+        else if (leaf->InheritsFrom(TLeafL::Class())) {
+          if (leaf->IsUnsigned())
+            getEvtNum = [&evtNum]()->ULong64_t { return evtNum.ul; };
+          else
+            getEvtNum = [&evtNum]()->ULong64_t { return evtNum.l; };
+        }
+        else
+          throw std::runtime_error(("I do not know how to read the leaf type of branch " + evtNumBranchName_).Data());
+      }
 
-  //   if (weightBranch) {
-  //     weightBranch->GetEntry(iLocalEntry);
-  //     if (weightF != nullptr)
-  //       weight = *weightF;
+      for (auto& ff : library_)
+        ff.second->UpdateFormulaLeaves();
+    }
 
-  //     if (printLevel_ > 3)
-  //       std::cout << "        Input weight " << weight << std::endl;
-  //   }
+    if (prescale_ > 1) {
+      if (evtNumBranch != nullptr)
+        evtNumBranch->GetEntry(iLocalEntry);
 
-  //   if (reweight_) {
-  //     reweight_(eventWeights);
-  //     if (eventWeights.empty())
-  //       continue;
+      if (printLevel_ > 3)
+        std::cout << "        Event number " << getEvtNum() << std::endl;
 
-  //     for (double& w : eventWeights)
-  //       w *= weight * constWeight_;
-  //   }
-  //   else
-  //     eventWeights.assign(1, weight * constWeight_);
+      if (getEvtNum() % prescale_ != 0)
+        continue;
+    }
 
-  //   if (printLevel_ > 3) {
-  //     std::cout << "         Global weights: ";
-  //     for (double w : eventWeights)
-  //       std::cout << w << " ";
-  //     std::cout << std::endl;
-  //   }    
+    // Reset formula cache
+    for (auto& ff : library_)
+      ff.second->ResetCache();
 
-  //   // Plots that do not require passing the baseline cut
-  //   for (auto* plot : unconditional_) {
-  //     if (printLevel_ > 3)
-  //       std::cout << "        Filling " << plot->getObj()->GetName() << std::endl;
+    if (weightBranch != nullptr) {
+      weightBranch->GetEntry(iLocalEntry);
 
-  //     plot->fill(eventWeights);
-  //   }
+      if (printLevel_ > 3)
+        std::cout << "        Input weight " << getWeight() << std::endl;
+    }
 
-  //   // Baseline cut
-  //   if (baseSelection_) {
-  //     unsigned nD(baseSelection_->GetNdata());
+    double commonWeight(getWeight() * constWeight_);
 
-  //     if (printLevel_ > 2)
-  //       std::cout << "        Base selection has " << nD << " iterations" << std::endl;
+    if (reweight_) {
+      reweight_(eventWeights);
+      if (eventWeights.empty())
+        continue;
 
-  //     bool any(false);
+      for (double& w : eventWeights)
+        w *= commonWeight;
+    }
+    else
+      eventWeights.assign(1, commonWeight);
 
-  //     if (baseResults)
-  //       baseResults->assign(nD, false);
+    if (printLevel_ > 3) {
+      std::cout << "         Global weights: ";
+      for (double w : eventWeights)
+        std::cout << w << " ";
+      std::cout << std::endl;
+    }
 
-  //     for (unsigned iD(0); iD != nD; ++iD) {
-  //       if (baseSelection_->EvalInstance(iD) != 0.) {
-  //         any = true;
+    for (auto* cut : cuts_)
+      cut->evaluateAndFill(eventWeights);
+  }
 
-  //         if (printLevel_ > 2)
-  //           std::cout << "        Base selection " << iD << " is true" << std::endl;
+  totalEvents_ = iEntry;
 
-  //         if (baseResults)
-  //           (*baseResults)[iD] = true;
-  //         else
-  //           break; // no need to evaluate more
-  //       }
-  //     }
+  if (printLevel_ >= 0) {
+    std::cout << "\r      " << iEntry << " events";
+    std::cout << std::endl;
+  }
 
-  //     if (!any)
-  //       continue;
-  //   }
-
-  //   ++passBase;
-
-  //   // Plots that require passing the baseline cut but not the full cut
-  //   for (auto* plot : postBase_) {
-  //     if (printLevel_ > 3)
-  //       std::cout << "        Filling " << plot->getObj()->GetName() << std::endl;
-
-  //     plot->fill(eventWeights, baseResults);
-  //   }
-
-  //   // Full cut
-  //   if (fullSelection_) {
-  //     unsigned nD(fullSelection_->GetNdata());
-
-  //     if (printLevel_ > 2)
-  //       std::cout << "        Full selection has " << nD << " iterations" << std::endl;
-
-  //     bool any(false);
-
-  //     if (fullResults)
-  //       fullResults->assign(nD, false);
-
-  //     // fullResults for iD >= baseResults->size() will never be true
-  //     if (baseResults && baseResults->size() < nD)
-  //       nD = baseResults->size();
-
-  //     bool loaded(false);
-
-  //     for (unsigned iD(0); iD != nD; ++iD) {
-  //       if (baseResults && !(*baseResults)[iD])
-  //         continue;
-
-  //       if (!loaded && iD != 0)
-  //         fullSelection_->EvalInstance(0);
-
-  //       loaded = true;
-
-  //       if (fullSelection_->EvalInstance(iD) != 0.) {
-  //         any = true;
-
-  //         if (printLevel_ > 2)
-  //           std::cout << "        Full selection " << iD << " is true" << std::endl;
-
-  //         if (fullResults)
-  //           (*fullResults)[iD] = true;
-  //         else
-  //           break;
-  //       }
-  //     }
-
-  //     if (!any)
-  //       continue;
-  //   }
-
-  //   ++passFull;
-
-  //   // Plots that require all cuts
-  //   for (auto* plot : postFull_) {
-  //     if (printLevel_ > 3)
-  //       std::cout << "        Filling " << plot->getObj()->GetName() << std::endl;
-
-  //     plot->fill(eventWeights, fullResults);
-  //   }
-  // }
-
-  // if (tree_.GetEntryList() != nullptr) {
-  //   auto* elist(tree_.GetEntryList());
-  //   tree_.SetEntryList(nullptr);
-  //   delete elist;
-  // }
-
-  // delete baseResults;
-  // delete fullResults;
-  // delete weightF;
-
-  // totalEvents_ = iEntry;
-
-  // if (printLevel_ >= 0) {
-  //   std::cout << "\r      " << iEntry << " events";
-  //   std::cout << std::endl;
-  // }
-
-  // if (printLevel_ > 0) {
-  //   std::cout << "      " << passBase << " passed base selection" << std::endl;
-  //   std::cout << "      " << passFull << " passed full selection" << std::endl;
-
-  //   for (auto* plots : {&postFull_, &postBase_, &unconditional_}) {
-  //     for (auto* plot : *plots)
-  //       std::cout << "        " << plot->getObj()->GetName() << ": " << plot->getCount() << std::endl;
-  //   }
-  // }
+  if (printLevel_ > 0) {
+    for (auto* cut : cuts_) {
+      std::cout << "        Cut " << cut->getName() << ": passed total " << cut->getCount() << std::endl;
+      for (unsigned iF(0); iF != cut->getNFillers(); ++iF) {
+        auto* filler(cut->getFiller(iF));
+        std::cout << "          " << filler->getObj().GetName() << ": " << filler->getCount() << std::endl;
+      }
+    }
+  }
 }

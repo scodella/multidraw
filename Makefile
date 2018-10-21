@@ -15,7 +15,7 @@ obj/LinkDef.h:
 	mkdir -p obj
 	$(shell ./mkLinkDef.py)
 
-obj/%.o: src/%.cc inc/%.h
+obj/%.o: src/%.cc $(inc)
 	mkdir -p obj
 	g++ -std=c++17 -O2 -fPIC -c -o $@ -I$(shell root-config --incdir) $<
 
