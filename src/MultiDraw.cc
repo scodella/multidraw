@@ -1,4 +1,6 @@
-#include "MultiDraw.h"
+#include "../inc/MultiDraw.h"
+#include "../inc/Plot1DFiller.h"
+#include "../inc/TreeFiller.h"
 
 #include "TFile.h"
 #include "TBranch.h"
@@ -14,317 +16,12 @@
 #include <iostream>
 #include <algorithm>
 
-/*
-  TFormula has no foolproof mechanism to signal a failure of expression compilation.
-  For normal expressions like TTreeFormula f("formula", "bogus", tree), we get f.GetTree() == 0.
-  However if a TTreePlayer function (Sum$, Max$, etc.) is used, the top-level expression
-  is considered valid even if the enclosed expression is not, and GetTree() returns the tree
-  address.
-  The only way we catch all compilation failures is to use the error message using ROOT
-  error handling mechanism.
-*/
-Int_t gLastErrorLevel = 0;
-void MyErrorHandler(Int_t level, Bool_t abort_bool, const char *location, const char *msg)
-{
-  gLastErrorLevel = level;
-  DefaultErrorHandler(level, abort_bool, location, msg);
-}
-
-//! A wrapper for TTreeFormulaCached creation
-TTreeFormula*
-NewTTreeFormula(char const* _name, char const* _expr, TTree* _tree)
-{
-  gLastErrorLevel = 0;
-  auto* errh(SetErrorHandler(MyErrorHandler));
-
-  auto* formula(new TTreeFormula(_name, _expr, _tree));
-
-  SetErrorHandler(errh);
-
-  if (formula->GetTree() == nullptr || gLastErrorLevel == kError) {
-    // compilation failed
-    delete formula;
-    return nullptr;
-  }
-
-  return formula;
-}
-
-//! A wrapper for TTreeFormulaCached creation
-TTreeFormulaCached*
-NewTTreeFormulaCached(char const* _name, char const* _expr, TTree* _tree)
-{
-  gLastErrorLevel = 0;
-  auto* errh(SetErrorHandler(MyErrorHandler));
-
-  auto* formula(new TTreeFormulaCached(_name, _expr, _tree));
-
-  SetErrorHandler(errh);
-
-  if (formula->GetTree() == nullptr || gLastErrorLevel == kError) {
-    // compilation failed
-    delete formula;
-    return nullptr;
-  }
-
-  return formula;
-}
-
-Int_t
-TTreeFormulaCached::GetNdata()
-{
-  if (fNdataCache < 0) {
-    fNdataCache = TTreeFormula::GetNdata();
-    fCache.assign(fNdataCache, std::pair<Bool_t, Double_t>(false, 0.));
-  }
-
-  return fNdataCache;
-}
-
-Double_t
-TTreeFormulaCached::EvalInstance(Int_t _i, char const* _stringStack[]/* = nullptr*/)
-{
-  if (_i >= int(fCache.size()))
-    return 0.;
-
-  if (!fCache[_i].first) {
-    fCache[_i].first = true;
-    fCache[_i].second = TTreeFormula::EvalInstance(_i, _stringStack);
-  }
-
-  return fCache[_i].second;
-}
-
-
-ExprFiller::ExprFiller(TTreeFormula* _cuts/* = nullptr*/, TTreeFormula* _reweight/* = nullptr*/) :
-  cuts_(_cuts),
-  reweight_(_reweight)
-{
-}
-
-ExprFiller::ExprFiller(ExprFiller const& _orig) :
-  ownFormulas_(_orig.ownFormulas_)
-{
-  if (ownFormulas_) {
-    for (unsigned iD(0); iD != _orig.getNdim(); ++iD) {
-      auto& oexpr(*_orig.getExpr(iD));
-      auto* formula(NewTTreeFormula(oexpr.GetName(), oexpr.GetTitle(), oexpr.GetTree()));
-      if (formula == nullptr)
-        throw std::runtime_error("Failed to compile formula.");
-
-      exprs_.push_back(formula);
-    }
-
-    if (_orig.cuts_ != nullptr) {
-      cuts_ = NewTTreeFormula(_orig.cuts_->GetName(), _orig.cuts_->GetTitle(), _orig.cuts_->GetTree());
-      if (cuts_ == nullptr)
-        throw std::runtime_error("Failed to compile cuts.");
-    }
-
-    if (_orig.reweight_ != nullptr) {
-      reweight_ = NewTTreeFormula(_orig.reweight_->GetName(), _orig.reweight_->GetTitle(), _orig.reweight_->GetTree());
-      if (reweight_ == nullptr)
-        throw std::runtime_error("Failed to compile reweight.");
-    }
-  }
-  else {
-    exprs_ = _orig.exprs_;
-    cuts_ = _orig.cuts_;
-    reweight_ = _orig.reweight_;
-  }
-}
-
-ExprFiller::~ExprFiller()
-{
-  if (ownFormulas_) {
-    delete cuts_;
-    delete reweight_;
-
-    for (auto* expr : exprs_)
-      delete expr;
-  }
-}
-
-void
-ExprFiller::updateTree()
-{
-  for (auto* expr : exprs_)
-    expr->UpdateFormulaLeaves();
-
-  if (cuts_ != nullptr)
-    cuts_->UpdateFormulaLeaves();
-
-  if (reweight_ != nullptr)
-    reweight_->UpdateFormulaLeaves();
-}
-
-void
-ExprFiller::fill(std::vector<double> const& _eventWeights, std::vector<bool> const* _presel/* = nullptr*/)
-{
-  // using the first expr for the number of instances
-  unsigned nD(exprs_.at(0)->GetNdata());
-  // need to call GetNdata before EvalInstance
-  if (cuts_ != nullptr)
-    cuts_->GetNdata();
-
-  if (printLevel_ > 3)
-    std::cout << "          " << getObj()->GetName() << "::fill() => " << nD << " iterations" << std::endl;
-
-  if (_presel != nullptr && _presel->size() < nD)
-    nD = _presel->size();
-
-  bool cutsLoaded(false);
-  bool loaded(false);
-
-  for (unsigned iD(0); iD != nD; ++iD) {
-    if (_presel != nullptr && !(*_presel)[iD])
-      continue;
-
-    if (cuts_ != nullptr) {
-      if (!cutsLoaded && iD != 0)
-        cuts_->EvalInstance(0);
-
-      cutsLoaded = true;
-
-      if (cuts_->EvalInstance(iD) == 0.)
-        continue;
-    }
-
-    ++counter_;
-
-    if (!loaded) {
-      for (unsigned iE(0); iE != exprs_.size(); ++iE) {
-        exprs_[iE]->GetNdata();
-        if (iD != 0) // need to always call EvalInstance(0)
-          exprs_[iE]->EvalInstance(0);
-      }
-      if (reweight_ != nullptr) {
-        reweight_->GetNdata();
-        if (iD != 0)
-          reweight_->EvalInstance(0);
-      }
-    }
-
-    loaded = true;
-
-    if (iD < _eventWeights.size())
-      entryWeight_ = _eventWeights[iD];
-    else
-      entryWeight_ = _eventWeights.back();
-
-    if (reweight_ != nullptr)
-      entryWeight_ *= reweight_->EvalInstance(iD);
-
-    doFill_(iD);
-  }
-}
-
-
-Plot::Plot(TH1& _hist, TTreeFormula& _expr, TTreeFormula* _cuts/* = nullptr*/, TTreeFormula* _reweight/* = nullptr*/, OverflowMode _mode/* = kNoOverflowBin*/) :
-  ExprFiller(_cuts, _reweight),
-  hist_(&_hist),
-  overflowMode_(_mode)
-{
-  exprs_.push_back(&_expr);
-}
-
-Plot::Plot(Plot const& _orig) :
-  ExprFiller(_orig),
-  hist_(_orig.hist_),
-  overflowMode_(_orig.overflowMode_)
-{
-}
-
-void
-Plot::doFill_(unsigned _iD)
-{
-  if (printLevel_ > 3)
-    std::cout << "            Fill(" << exprs_[0]->EvalInstance(_iD) << "; " << entryWeight_ << ")" << std::endl;
-
-  double x(exprs_[0]->EvalInstance(_iD));
-
-  switch (overflowMode_) {
-  case Plot::kNoOverflowBin:
-    break;
-  case Plot::kDedicated:
-    if (x > hist_->GetXaxis()->GetBinLowEdge(hist_->GetNbinsX()))
-      x = hist_->GetXaxis()->GetBinLowEdge(hist_->GetNbinsX());
-    break;
-  case Plot::kMergeLast:
-    if (x > hist_->GetXaxis()->GetBinUpEdge(hist_->GetNbinsX()))
-      x = hist_->GetXaxis()->GetBinLowEdge(hist_->GetNbinsX());
-    break;
-  }
-
-  hist_->Fill(x, entryWeight_);
-}
-
-
-Tree::Tree(TTree& _tree, TTreeFormula* _cuts/* = nullptr*/, TTreeFormula* _reweight/* = nullptr*/) :
-  ExprFiller(_cuts, _reweight),
-  tree_(&_tree)
-{
-  tree_->Branch("weight", &entryWeight_, "weight/D");
-
-  bvalues_.reserve(NBRANCHMAX);
-}
-
-Tree::Tree(Tree const& _orig) :
-  ExprFiller(_orig),
-  tree_(_orig.tree_),
-  bvalues_(_orig.bvalues_)
-{
-  tree_->SetBranchAddress("weight", &entryWeight_);
-
-  bvalues_.reserve(NBRANCHMAX);
-
-  // rely on the fact that the branch order should be aligned
-  auto* branches(tree_->GetListOfBranches());
-  for (int iB(0); iB != branches->GetEntries(); ++iB)
-    tree_->SetBranchAddress(branches->At(iB)->GetName(), &bvalues_[iB]);
-}
-
-void
-Tree::addBranch(char const* _bname, TTreeFormula& _expr)
-{
-  if (bvalues_.size() == NBRANCHMAX)
-    throw std::runtime_error("Cannot add any more branches");
-
-  bvalues_.resize(bvalues_.size() + 1);
-  tree_->Branch(_bname, &bvalues_.back(), TString::Format("%s/D", _bname));
-
-  exprs_.push_back(&_expr);
-}
-
-void
-Tree::doFill_(unsigned _iD)
-{
-  if (printLevel_ > 3)
-    std::cout << "            Fill(";
-
-  for (unsigned iE(0); iE != exprs_.size(); ++iE) {
-    if (printLevel_ > 3) {
-      std::cout << exprs_[iE]->EvalInstance(_iD);
-      if (iE != exprs_.size() - 1)
-        std::cout << ", ";
-    }
-
-    bvalues_[iE] = exprs_[iE]->EvalInstance(_iD);
-  }
-
-  if (printLevel_ > 3)
-    std::cout << "; " << entryWeight_ << ")" << std::endl;
-
-  tree_->Fill();
-}
-
-
-MultiDraw::MultiDraw(char const* _treeName/* = "events"*/) :
+multidraw::MultiDraw::MultiDraw(char const* _treeName/* = "events"*/) :
   tree_(_treeName)
 {
 }
 
-MultiDraw::~MultiDraw()
+multidraw::MultiDraw::~MultiDraw()
 {
   for (auto* plots : {&postFull_, &postBase_, &unconditional_}) {
     for (auto* plot : *plots)
@@ -336,7 +33,7 @@ MultiDraw::~MultiDraw()
 }
 
 void
-MultiDraw::setBaseSelection(char const* _cuts)
+multidraw::MultiDraw::setBaseSelection(char const* _cuts)
 {
   if (baseSelection_ != nullptr) {
     deleteFormula_(baseSelection_);
@@ -352,7 +49,7 @@ MultiDraw::setBaseSelection(char const* _cuts)
 }
 
 void
-MultiDraw::setFullSelection(char const* _cuts)
+multidraw::MultiDraw::setFullSelection(char const* _cuts)
 {
   if (fullSelection_ != nullptr) {
     deleteFormula_(fullSelection_);
@@ -368,7 +65,7 @@ MultiDraw::setFullSelection(char const* _cuts)
 }
 
 void
-MultiDraw::setReweight(char const* _expr, TObject const* _source/* = nullptr*/)
+multidraw::MultiDraw::setReweight(char const* _expr, TObject const* _source/* = nullptr*/)
 {
   if (reweightExpr_ != nullptr) {
     deleteFormula_(reweightExpr_);
@@ -476,7 +173,7 @@ MultiDraw::setReweight(char const* _expr, TObject const* _source/* = nullptr*/)
 }
 
 void
-MultiDraw::addPlot(TH1* _hist, char const* _expr, char const* _cuts/* = ""*/, bool _applyBaseline/* = true*/, bool _applyFullSelection/* = false*/, char const* _reweight/* = ""*/, Plot::OverflowMode _overflowMode/* = Plot::kNoOverflow*/)
+multidraw::MultiDraw::addPlot(TH1* _hist, char const* _expr, char const* _cuts/* = ""*/, bool _applyBaseline/* = true*/, bool _applyFullSelection/* = false*/, char const* _reweight/* = ""*/, Plot1DOverflowMode _overflowMode/* = kDefault*/)
 {
   TTreeFormulaCached* exprFormula(getFormula_(_expr));
   if (exprFormula == nullptr) {
@@ -485,7 +182,7 @@ MultiDraw::addPlot(TH1* _hist, char const* _expr, char const* _cuts/* = ""*/, bo
   }
 
   auto newPlot([_hist, _overflowMode, exprFormula](TTreeFormula* _cutsFormula, TTreeFormula* _reweightFormula)->ExprFiller* {
-      return new Plot(*_hist, *exprFormula, _cutsFormula, _reweightFormula, _overflowMode);
+      return new Plot1DFiller(*_hist, *exprFormula, _cutsFormula, _reweightFormula, _overflowMode);
     });
 
   if (printLevel_ > 1) {
@@ -500,10 +197,10 @@ MultiDraw::addPlot(TH1* _hist, char const* _expr, char const* _cuts/* = ""*/, bo
 }
 
 void
-MultiDraw::addTree(TTree* _tree, char const* _cuts/* = ""*/, bool _applyBaseline/* = true*/, bool _applyFullSelection/* = false*/, char const* _reweight/* = ""*/)
+multidraw::MultiDraw::addTree(TTree* _tree, char const* _cuts/* = ""*/, bool _applyBaseline/* = true*/, bool _applyFullSelection/* = false*/, char const* _reweight/* = ""*/)
 {
   auto newTree([_tree](TTreeFormula* _cutsFormula, TTreeFormula* _reweightFormula)->ExprFiller* {
-      return new Tree(*_tree, _cutsFormula, _reweightFormula);
+      return new TreeFiller(*_tree, _cutsFormula, _reweightFormula);
     });
 
   if (printLevel_ > 1) {
@@ -518,7 +215,7 @@ MultiDraw::addTree(TTree* _tree, char const* _cuts/* = ""*/, bool _applyBaseline
 }
 
 void
-MultiDraw::addTreeBranch(TTree* _tree, char const* _bname, char const* _expr)
+multidraw::MultiDraw::addTreeBranch(TTree* _tree, char const* _bname, char const* _expr)
 {
   auto* exprFormula(getFormula_(_expr));
   if (exprFormula == nullptr) {
@@ -532,14 +229,14 @@ MultiDraw::addTreeBranch(TTree* _tree, char const* _bname, char const* _expr)
         if (printLevel_ > 1)
           std::cout << "Adding a branch " << _bname << " to tree " << plot->getObj()->GetName() << " with expression " << _expr << std::endl;
 
-        static_cast<Tree*>(plot)->addBranch(_bname, *exprFormula);
+        static_cast<TreeFiller*>(plot)->addBranch(_bname, *exprFormula);
       }
     }
   }
 }
 
 void
-MultiDraw::addObj_(char const* _cuts, bool _applyBaseline, bool _applyFullSelection, char const* _reweight, ObjGen const& _gen)
+multidraw::MultiDraw::addObj_(char const* _cuts, bool _applyBaseline, bool _applyFullSelection, char const* _reweight, ObjGen const& _gen)
 {
   TTreeFormulaCached* cutsFormula(nullptr);
   if (_cuts != nullptr && std::strlen(_cuts) != 0) {
@@ -573,7 +270,7 @@ MultiDraw::addObj_(char const* _cuts, bool _applyBaseline, bool _applyFullSelect
 }
 
 TTreeFormulaCached*
-MultiDraw::getFormula_(char const* _expr)
+multidraw::MultiDraw::getFormula_(char const* _expr)
 {
   auto fItr(library_.find(_expr));
   if (fItr != library_.end()) {
@@ -591,7 +288,7 @@ MultiDraw::getFormula_(char const* _expr)
 }
 
 void
-MultiDraw::deleteFormula_(TTreeFormulaCached* _formula)
+multidraw::MultiDraw::deleteFormula_(TTreeFormulaCached* _formula)
 {
   if (_formula->GetNRef() == 1) {
     library_.erase(_formula->GetTitle());
@@ -600,7 +297,7 @@ MultiDraw::deleteFormula_(TTreeFormulaCached* _formula)
 }
 
 void
-MultiDraw::fillPlots(long _nEntries/* = -1*/, long _firstEntry/* = 0*/, char const* _filter/* = nullptr*/)
+multidraw::MultiDraw::fillPlots(long _nEntries/* = -1*/, long _firstEntry/* = 0*/, char const* _filter/* = nullptr*/)
 {
   float* weightF(nullptr);
   double weight(1.);

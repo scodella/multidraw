@@ -4,15 +4,16 @@ obj=$(patsubst src/%.cc,obj/%.o,$(src))
 inc=$(patsubst src/%.cc,inc/%.h,$(src))
 
 $(target): $(obj) obj/dict.o
-	mkdir -p lib
 	g++ -std=c++17 -O2 -fPIC -shared $(shell root-config --libs) -o $@ $^
 
-obj/dict.o: $(inc) src/LinkDef.h
+obj/dict.o: $(inc) obj/LinkDef.h
 	mkdir -p obj
 	rootcling -f obj/dict.cc $^
 	g++ -std=c++17 -O2 -fPIC -c -o $@ -I$(shell root-config --incdir) -I$(shell pwd) obj/dict.cc
-	mkdir -p lib
-	mv obj/dict_rdict.pcm lib/
+
+obj/LinkDef.h:
+	mkdir -p obj
+	$(shell ./mkLinkDef.py)
 
 obj/%.o: src/%.cc inc/%.h
 	mkdir -p obj
@@ -21,4 +22,4 @@ obj/%.o: src/%.cc inc/%.h
 .PHONY: clean
 
 clean:
-	rm -rf obj lib
+	rm -rf obj
