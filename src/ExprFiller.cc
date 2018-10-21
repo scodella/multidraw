@@ -3,8 +3,7 @@
 
 #include <iostream>
 
-multidraw::ExprFiller::ExprFiller(TTreeFormula* _cuts/* = nullptr*/, TTreeFormula* _reweight/* = nullptr*/) :
-  cuts_(_cuts),
+multidraw::ExprFiller::ExprFiller(TTreeFormula* _reweight/* = nullptr*/) :
   reweight_(_reweight)
 {
 }
@@ -22,12 +21,6 @@ multidraw::ExprFiller::ExprFiller(ExprFiller const& _orig) :
       exprs_.push_back(formula);
     }
 
-    if (_orig.cuts_ != nullptr) {
-      cuts_ = NewTTreeFormula(_orig.cuts_->GetName(), _orig.cuts_->GetTitle(), _orig.cuts_->GetTree());
-      if (cuts_ == nullptr)
-        throw std::runtime_error("Failed to compile cuts.");
-    }
-
     if (_orig.reweight_ != nullptr) {
       reweight_ = NewTTreeFormula(_orig.reweight_->GetName(), _orig.reweight_->GetTitle(), _orig.reweight_->GetTree());
       if (reweight_ == nullptr)
@@ -36,7 +29,6 @@ multidraw::ExprFiller::ExprFiller(ExprFiller const& _orig) :
   }
   else {
     exprs_ = _orig.exprs_;
-    cuts_ = _orig.cuts_;
     reweight_ = _orig.reweight_;
   }
 }
@@ -44,7 +36,6 @@ multidraw::ExprFiller::ExprFiller(ExprFiller const& _orig) :
 multidraw::ExprFiller::~ExprFiller()
 {
   if (ownFormulas_) {
-    delete cuts_;
     delete reweight_;
 
     for (auto* expr : exprs_)
@@ -58,9 +49,6 @@ multidraw::ExprFiller::updateTree()
   for (auto* expr : exprs_)
     expr->UpdateFormulaLeaves();
 
-  if (cuts_ != nullptr)
-    cuts_->UpdateFormulaLeaves();
-
   if (reweight_ != nullptr)
     reweight_->UpdateFormulaLeaves();
 }
@@ -71,31 +59,17 @@ multidraw::ExprFiller::fill(std::vector<double> const& _eventWeights, std::vecto
   // using the first expr for the number of instances
   unsigned nD(exprs_.at(0)->GetNdata());
   // need to call GetNdata before EvalInstance
-  if (cuts_ != nullptr)
-    cuts_->GetNdata();
-
   if (printLevel_ > 3)
-    std::cout << "          " << getObj()->GetName() << "::fill() => " << nD << " iterations" << std::endl;
+    std::cout << "          " << getObj().GetName() << "::fill() => " << nD << " iterations" << std::endl;
 
   if (_presel != nullptr && _presel->size() < nD)
     nD = _presel->size();
 
-  bool cutsLoaded(false);
   bool loaded(false);
 
   for (unsigned iD(0); iD != nD; ++iD) {
     if (_presel != nullptr && !(*_presel)[iD])
       continue;
-
-    if (cuts_ != nullptr) {
-      if (!cutsLoaded && iD != 0)
-        cuts_->EvalInstance(0);
-
-      cutsLoaded = true;
-
-      if (cuts_->EvalInstance(iD) == 0.)
-        continue;
-    }
 
     ++counter_;
 

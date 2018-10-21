@@ -1,6 +1,8 @@
 #ifndef multidraw_ExprFiller_h
 #define multidraw_ExprFiller_h
 
+#include "TString.h"
+
 #include <vector>
 
 class TObject;
@@ -15,7 +17,7 @@ namespace multidraw {
    */
   class ExprFiller {
   public:
-    ExprFiller(TTreeFormula* cuts = nullptr, TTreeFormula* reweight = nullptr);
+    ExprFiller(TTreeFormula* reweight = nullptr);
     ExprFiller(ExprFiller const&);
     virtual ~ExprFiller();
 
@@ -24,13 +26,11 @@ namespace multidraw {
     unsigned getNdim() const { return exprs_.size(); }
     TTreeFormula const* getExpr(unsigned iE = 0) const { return exprs_.at(iE); }
     TTreeFormula* getExpr(unsigned iE = 0) { return exprs_.at(iE); }
-    TTreeFormula const* getCuts() const { return cuts_; }
-    TTreeFormula* getCuts() { return cuts_; }
     TTreeFormula const* getReweight() const { return reweight_; }
     void updateTree();
     void fill(std::vector<double> const& eventWeights, std::vector<bool> const* = nullptr);
 
-    virtual TObject const* getObj() const = 0;
+    virtual TObject const& getObj() const = 0;
 
     void resetCount() { counter_ = 0; }
     unsigned getCount() const { return counter_; }
@@ -41,7 +41,6 @@ namespace multidraw {
     virtual void doFill_(unsigned) = 0;
 
     std::vector<TTreeFormula*> exprs_{};
-    TTreeFormula* cuts_{nullptr};
     TTreeFormula* reweight_{nullptr};
     bool ownFormulas_{false};
     double entryWeight_{1.};

@@ -1,6 +1,7 @@
 #include "../inc/MultiDraw.h"
 #include "../inc/Plot1DFiller.h"
 #include "../inc/TreeFiller.h"
+#include "../inc/FormulaLibrary.h"
 
 #include "TFile.h"
 #include "TBranch.h"
@@ -14,74 +15,58 @@
 #include <stdexcept>
 #include <cstring>
 #include <iostream>
+#include <sstream>
 #include <algorithm>
 
 multidraw::MultiDraw::MultiDraw(char const* _treeName/* = "events"*/) :
-  tree_(_treeName)
+  tree_(_treeName),
+  library_(tree_)
 {
+  cuts_.emplace("", new Cut("", []()->bool { return true; }));
 }
 
 multidraw::MultiDraw::~MultiDraw()
 {
-  for (auto* plots : {&postFull_, &postBase_, &unconditional_}) {
-    for (auto* plot : *plots)
-      delete plot;
-  }
-
-  for (auto& ff : library_)
-    delete ff.second;
+  for (auto& p : cuts_)
+    delete p.second;
 }
 
 void
-multidraw::MultiDraw::setBaseSelection(char const* _cuts)
+multidraw::MultiDraw::setFilter(char const* _expr)
 {
-  if (baseSelection_ != nullptr) {
-    deleteFormula_(baseSelection_);
-    baseSelection_ = nullptr;
-  }
-
-  if (!_cuts || std::strlen(_cuts) == 0)
-    return;
-
-  baseSelection_ = getFormula_(_cuts);
-  if (baseSelection_ == nullptr)
-    std::cerr << "Failed to compile base selection " << _cuts << std::endl;
+  cuts_[""]->setFormula(*library_.getFormula(_expr));
 }
 
 void
-multidraw::MultiDraw::setFullSelection(char const* _cuts)
+multidraw::MultiDraw::addCut(char const* _name, char const* _expr)
 {
-  if (fullSelection_ != nullptr) {
-    deleteFormula_(fullSelection_);
-    fullSelection_ = nullptr;
+  if (cuts_.count(_name) != 0) {
+    std::stringstream ss;
+    ss << "Cut named " << _name << " already exists";
+    std::cout << ss.str() << std::endl;
+    throw std::invalid_argument(ss.str());
   }
 
-  if (!_cuts || std::strlen(_cuts) == 0)
-    return;
+  cuts_.emplace(_name, new Cut(_name, *library_.getFormula(_expr)));
+}
 
-  fullSelection_ = getFormula_(_cuts);
-  if (fullSelection_ == nullptr)
-    std::cerr << "Failed to compile full selection " << _cuts << std::endl;
+void
+multidraw::MultiDraw::setPrescale(unsigned _p, char const* _evtNumBranch/* = ""*/)
+{
+  prescale_ = _p;
+  evtNumBranch_ = _evtNumBranch;
 }
 
 void
 multidraw::MultiDraw::setReweight(char const* _expr, TObject const* _source/* = nullptr*/)
 {
-  if (reweightExpr_ != nullptr) {
-    deleteFormula_(reweightExpr_);
-    reweightExpr_ = nullptr;
-  }
-
+  library_.deleteFormula(reweightExpr_);
   reweight_ = nullptr;
 
   if (!_expr || std::strlen(_expr) == 0)
     return;
 
-  reweightExpr_ = getFormula_(_expr);
-  if (reweightExpr_ == nullptr) {
-    std::cerr << "Failed to compile reweight expression " << _expr << std::endl;
-    return;
-  }
+  reweightExpr_ = library_.getFormula(_expr);
 
   if (_source != nullptr) {
     if (_source->InheritsFrom(TH1::Class())) {
@@ -172,407 +157,345 @@ multidraw::MultiDraw::setReweight(char const* _expr, TObject const* _source/* = 
   }
 }
 
-void
-multidraw::MultiDraw::addPlot(TH1* _hist, char const* _expr, char const* _cuts/* = ""*/, bool _applyBaseline/* = true*/, bool _applyFullSelection/* = false*/, char const* _reweight/* = ""*/, Plot1DOverflowMode _overflowMode/* = kDefault*/)
+multidraw::Plot1DFiller&
+multidraw::MultiDraw::addPlot(TH1* _hist, char const* _expr, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/, Plot1DOverflowMode _overflowMode/* = kDefault*/)
 {
-  TTreeFormulaCached* exprFormula(getFormula_(_expr));
-  if (exprFormula == nullptr) {
-    std::cerr << "Plot " << _hist->GetName() << " cannot be added (invalid expression)" << std::endl;
-    return;
-  }
+  TTreeFormulaCached* exprFormula(library_.getFormula(_expr));
 
-  auto newPlot([_hist, _overflowMode, exprFormula](TTreeFormula* _cutsFormula, TTreeFormula* _reweightFormula)->ExprFiller* {
-      return new Plot1DFiller(*_hist, *exprFormula, _cutsFormula, _reweightFormula, _overflowMode);
+  auto newPlot1D([_hist, _overflowMode, exprFormula](TTreeFormula* _reweightFormula)->ExprFiller* {
+      return new Plot1DFiller(*_hist, *exprFormula, _reweightFormula, _overflowMode);
     });
 
   if (printLevel_ > 1) {
     std::cout << "\nAdding Plot " << _hist->GetName() << " with expression " << _expr << std::endl;
-    if (_cuts != nullptr && std::strlen(_cuts) != 0)
-      std::cout << " Cuts: " << _cuts << std::endl;
+    if (_cutName != nullptr && std::strlen(_cutName) != 0)
+      std::cout << " Cut: " << _cutName << std::endl;
     if (_reweight != nullptr && std::strlen(_reweight) != 0)
       std::cout << " Reweight: " << _reweight << std::endl;
   }
 
-  addObj_(_cuts, _applyBaseline, _applyFullSelection, _reweight, newPlot);
+  return static_cast<Plot1DFiller&>(addObj_(_cutName, _reweight, newPlot1D));
 }
 
-void
-multidraw::MultiDraw::addTree(TTree* _tree, char const* _cuts/* = ""*/, bool _applyBaseline/* = true*/, bool _applyFullSelection/* = false*/, char const* _reweight/* = ""*/)
+multidraw::TreeFiller&
+multidraw::MultiDraw::addTree(TTree* _tree, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/)
 {
-  auto newTree([_tree](TTreeFormula* _cutsFormula, TTreeFormula* _reweightFormula)->ExprFiller* {
-      return new TreeFiller(*_tree, _cutsFormula, _reweightFormula);
+  auto newTree([this, _tree](TTreeFormula* _reweightFormula)->ExprFiller* {
+      return new TreeFiller(*_tree, &this->library_, _reweightFormula);
     });
 
   if (printLevel_ > 1) {
     std::cout << "\nAdding Tree " << _tree->GetName() << std::endl;
-    if (_cuts != nullptr && std::strlen(_cuts) != 0)
-      std::cout << " Cuts: " << _cuts << std::endl;
+    if (_cutName != nullptr && std::strlen(_cutName) != 0)
+      std::cout << " Cut: " << _cutName << std::endl;
     if (_reweight != nullptr && std::strlen(_reweight) != 0)
       std::cout << " Reweight: " << _reweight << std::endl;
   }
 
-  addObj_(_cuts, _applyBaseline, _applyFullSelection, _reweight, newTree);
+  return static_cast<TreeFiller&>(addObj_(_cutName, _reweight, newTree));
 }
 
-void
-multidraw::MultiDraw::addTreeBranch(TTree* _tree, char const* _bname, char const* _expr)
+multidraw::ExprFiller&
+multidraw::MultiDraw::addObj_(char const* _cutName, char const* _reweight, ObjGen const& _gen)
 {
-  auto* exprFormula(getFormula_(_expr));
-  if (exprFormula == nullptr) {
-    std::cerr << "Branch " << _bname << " cannot be added (invalid expression)" << std::endl;
-    return;
+  auto cutItr(cuts_.find(_cutName));
+  if (cutItr == cuts_.end()) {
+    std::stringstream ss;
+    ss << "Cut \"" << _cutName << "\" not defined";
+    std::cerr << ss.str() << std::endl;
+    throw std::runtime_error(ss.str());
   }
 
-  for (auto* plots : {&postFull_, &postBase_, &unconditional_}) {
-    for (auto* plot : *plots) {
-      if (plot->getObj() == _tree) {
-        if (printLevel_ > 1)
-          std::cout << "Adding a branch " << _bname << " to tree " << plot->getObj()->GetName() << " with expression " << _expr << std::endl;
-
-        static_cast<TreeFiller*>(plot)->addBranch(_bname, *exprFormula);
-      }
-    }
-  }
-}
-
-void
-multidraw::MultiDraw::addObj_(char const* _cuts, bool _applyBaseline, bool _applyFullSelection, char const* _reweight, ObjGen const& _gen)
-{
-  TTreeFormulaCached* cutsFormula(nullptr);
-  if (_cuts != nullptr && std::strlen(_cuts) != 0) {
-    cutsFormula = getFormula_(_cuts);
-    if (cutsFormula == nullptr) {
-      std::cerr << "Failed to compile cuts " << _cuts << std::endl;
-      return;
-    }
-  }
+  auto& cut(*cutItr->second);
 
   TTreeFormulaCached* reweightFormula(nullptr);
-  if (_reweight != nullptr && std::strlen(_reweight) != 0) {
-    reweightFormula = getFormula_(_reweight);
-    if (reweightFormula == nullptr) {
-      std::cerr << "Failed to compile reweight " << _reweight << std::endl;
-      return;
-    }
-  }
+  if (_reweight != nullptr && std::strlen(_reweight) != 0)
+    reweightFormula = library_.getFormula(_reweight);
 
-  std::vector<ExprFiller*>* stack(nullptr);
-  if (_applyBaseline) {
-    if (_applyFullSelection)
-      stack = &postFull_;
-    else
-      stack = &postBase_;
-  }
-  else
-    stack = &unconditional_;
+  auto* filler(_gen(reweightFormula));
 
-  stack->push_back(_gen(cutsFormula, reweightFormula));
-}
+  cut.addFiller(*filler);
 
-TTreeFormulaCached*
-multidraw::MultiDraw::getFormula_(char const* _expr)
-{
-  auto fItr(library_.find(_expr));
-  if (fItr != library_.end()) {
-    fItr->second->SetNRef(fItr->second->GetNRef() + 1);
-    return fItr->second;
-  }
-
-  auto* f(NewTTreeFormulaCached("formula", _expr, &tree_));
-  if (f == nullptr)
-    return nullptr;
-
-  library_.emplace(_expr, f);
-
-  return f;
+  return *filler;
 }
 
 void
-multidraw::MultiDraw::deleteFormula_(TTreeFormulaCached* _formula)
+multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
 {
-  if (_formula->GetNRef() == 1) {
-    library_.erase(_formula->GetTitle());
-    delete _formula;
-  }
-}
+  // float* weightF(nullptr);
+  // double weight(1.);
+  // unsigned eventNumber;
+  // TBranch* weightBranch(nullptr);
+  // TBranch* eventNumberBranch(nullptr);
 
-void
-multidraw::MultiDraw::fillPlots(long _nEntries/* = -1*/, long _firstEntry/* = 0*/, char const* _filter/* = nullptr*/)
-{
-  float* weightF(nullptr);
-  double weight(1.);
-  unsigned eventNumber;
-  TBranch* weightBranch(nullptr);
-  TBranch* eventNumberBranch(nullptr);
+  // for (auto* plots : {&postFull_, &postBase_, &unconditional_}) {
+  //   for (auto* plot : *plots) {
+  //     plot->setPrintLevel(printLevel_);
+  //     plot->resetCount();
+  //   }
+  // }
 
-  for (auto* plots : {&postFull_, &postBase_, &unconditional_}) {
-    for (auto* plot : *plots) {
-      plot->setPrintLevel(printLevel_);
-      plot->resetCount();
-    }
-  }
+  // std::vector<double> eventWeights;
+  // std::vector<bool>* baseResults(nullptr);
+  // std::vector<bool>* fullResults(nullptr);
 
-  std::vector<double> eventWeights;
-  std::vector<bool>* baseResults(nullptr);
-  std::vector<bool>* fullResults(nullptr);
+  // if (baseSelection_ && baseSelection_->GetMultiplicity() != 0) {
+  //   if (printLevel_ > 1)
+  //     std::cout << "\n\nBase selection is based on an array." << std::endl;
 
-  if (baseSelection_ && baseSelection_->GetMultiplicity() != 0) {
-    if (printLevel_ > 1)
-      std::cout << "\n\nBase selection is based on an array." << std::endl;
+  //   baseResults = new std::vector<bool>;
+  // }
+  // if (fullSelection_ && fullSelection_->GetMultiplicity() != 0) {
+  //   if (printLevel_ > 1)
+  //     std::cout << "\nFull selection is based on an array." << std::endl;
 
-    baseResults = new std::vector<bool>;
-  }
-  if (fullSelection_ && fullSelection_->GetMultiplicity() != 0) {
-    if (printLevel_ > 1)
-      std::cout << "\nFull selection is based on an array." << std::endl;
+  //   fullResults = new std::vector<bool>;
+  // }
 
-    fullResults = new std::vector<bool>;
-  }
+  // long printEvery(10000);
+  // if (printLevel_ == 2)
+  //   printEvery = 10000;
+  // else if (printLevel_ == 3)
+  //   printEvery = 100;
+  // else if (printLevel_ >= 4)
+  //   printEvery = 1;
 
-  long printEvery(10000);
-  if (printLevel_ == 2)
-    printEvery = 10000;
-  else if (printLevel_ == 3)
-    printEvery = 100;
-  else if (printLevel_ >= 4)
-    printEvery = 1;
+  // if (_filter != nullptr && std::strlen(_filter) != 0) {
+  //   tree_.Draw(">>elist", _filter, "entrylist");
+  //   auto* elist(static_cast<TEntryList*>(gDirectory->Get("elist")));
+  //   tree_.SetEntryList(elist);
+  // }
 
-  if (_filter != nullptr && std::strlen(_filter) != 0) {
-    tree_.Draw(">>elist", _filter, "entrylist");
-    auto* elist(static_cast<TEntryList*>(gDirectory->Get("elist")));
-    tree_.SetEntryList(elist);
-  }
+  // long long iEntry(_firstEntry);
+  // long long iEntryMax(_firstEntry + _nEntries);
+  // int treeNumber(-1);
+  // unsigned passBase(0);
+  // unsigned passFull(0);
+  // while (iEntry != iEntryMax) {
+  //   long long iEntryFiltered(tree_.GetEntryNumber(iEntry++));
+  //   if (iEntryFiltered < 0)
+  //     break;
+  //   long long iLocalEntry(tree_.LoadTree(iEntryFiltered));
+  //   if (iLocalEntry < 0)
+  //     break;
 
-  long long iEntry(_firstEntry);
-  long long iEntryMax(_firstEntry + _nEntries);
-  int treeNumber(-1);
-  unsigned passBase(0);
-  unsigned passFull(0);
-  while (iEntry != iEntryMax) {
-    long long iEntryFiltered(tree_.GetEntryNumber(iEntry++));
-    if (iEntryFiltered < 0)
-      break;
-    long long iLocalEntry(tree_.LoadTree(iEntryFiltered));
-    if (iLocalEntry < 0)
-      break;
+  //   if (printLevel_ >= 0 && iEntry % printEvery == 1) {
+  //     std::cout << "\r      " << iEntry << " events";
+  //     if (printLevel_ > 2)
+  //       std::cout << std::endl;
+  //   }
 
-    if (printLevel_ >= 0 && iEntry % printEvery == 1) {
-      std::cout << "\r      " << iEntry << " events";
-      if (printLevel_ > 2)
-        std::cout << std::endl;
-    }
+  //   if (treeNumber != tree_.GetTreeNumber()) {
+  //     if (printLevel_ > 1)
+  //       std::cout << "      Opened a new file: " << tree_.GetCurrentFile()->GetName() << std::endl;
 
-    if (treeNumber != tree_.GetTreeNumber()) {
-      if (printLevel_ > 1)
-        std::cout << "      Opened a new file: " << tree_.GetCurrentFile()->GetName() << std::endl;
+  //     treeNumber = tree_.GetTreeNumber();
 
-      treeNumber = tree_.GetTreeNumber();
+  //     if (weightBranchName_.Length() != 0) {
+  //       weightBranch = tree_.GetBranch(weightBranchName_);
+  //       if (!weightBranch)
+  //         throw std::runtime_error(("Could not find branch " + weightBranchName_).Data());
 
-      if (weightBranchName_.Length() != 0) {
-        weightBranch = tree_.GetBranch(weightBranchName_);
-        if (!weightBranch)
-          throw std::runtime_error(("Could not find branch " + weightBranchName_).Data());
+  //       auto* leaves(weightBranch->GetListOfLeaves());
+  //       if (leaves->GetEntries() == 0) // ??
+  //         throw std::runtime_error(("Branch " + weightBranchName_ + " does not have any leaves").Data());
 
-        auto* leaves(weightBranch->GetListOfLeaves());
-        if (leaves->GetEntries() == 0) // ??
-          throw std::runtime_error(("Branch " + weightBranchName_ + " does not have any leaves").Data());
+  //       auto* leaf(static_cast<TLeaf*>(leaves->At(0)));
 
-        auto* leaf(static_cast<TLeaf*>(leaves->At(0)));
+  //       if (leaf->InheritsFrom(TLeafF::Class())) {
+  //         if (weightF == nullptr)
+  //           weightF = new float;
+  //         weightBranch->SetAddress(weightF);
+  //       }
+  //       else if (leaf->InheritsFrom(TLeafD::Class())) {
+  //         if (weightF != nullptr) {
+  //           // we don't really need to handle a case like this (trees with different weight branch types are mixed), but we can..
+  //           delete weightF;
+  //           weightF = nullptr;
+  //         }
+  //         weightBranch->SetAddress(&weight);
+  //       }
+  //       else
+  //         throw std::runtime_error(("I do not know how to read the leaf type of branch " + weightBranchName_).Data());
+  //     }
 
-        if (leaf->InheritsFrom(TLeafF::Class())) {
-          if (weightF == nullptr)
-            weightF = new float;
-          weightBranch->SetAddress(weightF);
-        }
-        else if (leaf->InheritsFrom(TLeafD::Class())) {
-          if (weightF != nullptr) {
-            // we don't really need to handle a case like this (trees with different weight branch types are mixed), but we can..
-            delete weightF;
-            weightF = nullptr;
-          }
-          weightBranch->SetAddress(&weight);
-        }
-        else
-          throw std::runtime_error(("I do not know how to read the leaf type of branch " + weightBranchName_).Data());
-      }
+  //     if (prescale_ > 1) {
+  //       eventNumberBranch = tree_.GetBranch("eventNumber");
+  //       if (!eventNumberBranch)
+  //         throw std::runtime_error("Event number not available");
 
-      if (prescale_ > 1) {
-        eventNumberBranch = tree_.GetBranch("eventNumber");
-        if (!eventNumberBranch)
-          throw std::runtime_error("Event number not available");
+  //       eventNumberBranch->SetAddress(&eventNumber);
+  //     }
 
-        eventNumberBranch->SetAddress(&eventNumber);
-      }
+  //     for (auto& ff : library_)
+  //       ff.second->UpdateFormulaLeaves();
+  //   }
 
-      for (auto& ff : library_)
-        ff.second->UpdateFormulaLeaves();
-    }
+  //   if (prescale_ > 1) {
+  //     eventNumberBranch->GetEntry(iLocalEntry);
 
-    if (prescale_ > 1) {
-      eventNumberBranch->GetEntry(iLocalEntry);
+  //     if (eventNumber % prescale_ != 0)
+  //       continue;
+  //   }
 
-      if (eventNumber % prescale_ != 0)
-        continue;
-    }
+  //   // Reset formula cache
+  //   for (auto& ff : library_)
+  //     ff.second->ResetCache();
 
-    // Reset formula cache
-    for (auto& ff : library_)
-      ff.second->ResetCache();
+  //   if (weightBranch) {
+  //     weightBranch->GetEntry(iLocalEntry);
+  //     if (weightF != nullptr)
+  //       weight = *weightF;
 
-    if (weightBranch) {
-      weightBranch->GetEntry(iLocalEntry);
-      if (weightF != nullptr)
-        weight = *weightF;
+  //     if (printLevel_ > 3)
+  //       std::cout << "        Input weight " << weight << std::endl;
+  //   }
 
-      if (printLevel_ > 3)
-        std::cout << "        Input weight " << weight << std::endl;
-    }
+  //   if (reweight_) {
+  //     reweight_(eventWeights);
+  //     if (eventWeights.empty())
+  //       continue;
 
-    if (reweight_) {
-      reweight_(eventWeights);
-      if (eventWeights.empty())
-        continue;
+  //     for (double& w : eventWeights)
+  //       w *= weight * constWeight_;
+  //   }
+  //   else
+  //     eventWeights.assign(1, weight * constWeight_);
 
-      for (double& w : eventWeights)
-        w *= weight * constWeight_;
-    }
-    else
-      eventWeights.assign(1, weight * constWeight_);
+  //   if (printLevel_ > 3) {
+  //     std::cout << "         Global weights: ";
+  //     for (double w : eventWeights)
+  //       std::cout << w << " ";
+  //     std::cout << std::endl;
+  //   }    
 
-    if (printLevel_ > 3) {
-      std::cout << "         Global weights: ";
-      for (double w : eventWeights)
-        std::cout << w << " ";
-      std::cout << std::endl;
-    }    
+  //   // Plots that do not require passing the baseline cut
+  //   for (auto* plot : unconditional_) {
+  //     if (printLevel_ > 3)
+  //       std::cout << "        Filling " << plot->getObj()->GetName() << std::endl;
 
-    // Plots that do not require passing the baseline cut
-    for (auto* plot : unconditional_) {
-      if (printLevel_ > 3)
-        std::cout << "        Filling " << plot->getObj()->GetName() << std::endl;
+  //     plot->fill(eventWeights);
+  //   }
 
-      plot->fill(eventWeights);
-    }
+  //   // Baseline cut
+  //   if (baseSelection_) {
+  //     unsigned nD(baseSelection_->GetNdata());
 
-    // Baseline cut
-    if (baseSelection_) {
-      unsigned nD(baseSelection_->GetNdata());
+  //     if (printLevel_ > 2)
+  //       std::cout << "        Base selection has " << nD << " iterations" << std::endl;
 
-      if (printLevel_ > 2)
-        std::cout << "        Base selection has " << nD << " iterations" << std::endl;
+  //     bool any(false);
 
-      bool any(false);
+  //     if (baseResults)
+  //       baseResults->assign(nD, false);
 
-      if (baseResults)
-        baseResults->assign(nD, false);
+  //     for (unsigned iD(0); iD != nD; ++iD) {
+  //       if (baseSelection_->EvalInstance(iD) != 0.) {
+  //         any = true;
 
-      for (unsigned iD(0); iD != nD; ++iD) {
-        if (baseSelection_->EvalInstance(iD) != 0.) {
-          any = true;
+  //         if (printLevel_ > 2)
+  //           std::cout << "        Base selection " << iD << " is true" << std::endl;
 
-          if (printLevel_ > 2)
-            std::cout << "        Base selection " << iD << " is true" << std::endl;
+  //         if (baseResults)
+  //           (*baseResults)[iD] = true;
+  //         else
+  //           break; // no need to evaluate more
+  //       }
+  //     }
 
-          if (baseResults)
-            (*baseResults)[iD] = true;
-          else
-            break; // no need to evaluate more
-        }
-      }
+  //     if (!any)
+  //       continue;
+  //   }
 
-      if (!any)
-        continue;
-    }
+  //   ++passBase;
 
-    ++passBase;
+  //   // Plots that require passing the baseline cut but not the full cut
+  //   for (auto* plot : postBase_) {
+  //     if (printLevel_ > 3)
+  //       std::cout << "        Filling " << plot->getObj()->GetName() << std::endl;
 
-    // Plots that require passing the baseline cut but not the full cut
-    for (auto* plot : postBase_) {
-      if (printLevel_ > 3)
-        std::cout << "        Filling " << plot->getObj()->GetName() << std::endl;
+  //     plot->fill(eventWeights, baseResults);
+  //   }
 
-      plot->fill(eventWeights, baseResults);
-    }
+  //   // Full cut
+  //   if (fullSelection_) {
+  //     unsigned nD(fullSelection_->GetNdata());
 
-    // Full cut
-    if (fullSelection_) {
-      unsigned nD(fullSelection_->GetNdata());
+  //     if (printLevel_ > 2)
+  //       std::cout << "        Full selection has " << nD << " iterations" << std::endl;
 
-      if (printLevel_ > 2)
-        std::cout << "        Full selection has " << nD << " iterations" << std::endl;
+  //     bool any(false);
 
-      bool any(false);
+  //     if (fullResults)
+  //       fullResults->assign(nD, false);
 
-      if (fullResults)
-        fullResults->assign(nD, false);
+  //     // fullResults for iD >= baseResults->size() will never be true
+  //     if (baseResults && baseResults->size() < nD)
+  //       nD = baseResults->size();
 
-      // fullResults for iD >= baseResults->size() will never be true
-      if (baseResults && baseResults->size() < nD)
-        nD = baseResults->size();
+  //     bool loaded(false);
 
-      bool loaded(false);
+  //     for (unsigned iD(0); iD != nD; ++iD) {
+  //       if (baseResults && !(*baseResults)[iD])
+  //         continue;
 
-      for (unsigned iD(0); iD != nD; ++iD) {
-        if (baseResults && !(*baseResults)[iD])
-          continue;
+  //       if (!loaded && iD != 0)
+  //         fullSelection_->EvalInstance(0);
 
-        if (!loaded && iD != 0)
-          fullSelection_->EvalInstance(0);
+  //       loaded = true;
 
-        loaded = true;
+  //       if (fullSelection_->EvalInstance(iD) != 0.) {
+  //         any = true;
 
-        if (fullSelection_->EvalInstance(iD) != 0.) {
-          any = true;
+  //         if (printLevel_ > 2)
+  //           std::cout << "        Full selection " << iD << " is true" << std::endl;
 
-          if (printLevel_ > 2)
-            std::cout << "        Full selection " << iD << " is true" << std::endl;
+  //         if (fullResults)
+  //           (*fullResults)[iD] = true;
+  //         else
+  //           break;
+  //       }
+  //     }
 
-          if (fullResults)
-            (*fullResults)[iD] = true;
-          else
-            break;
-        }
-      }
+  //     if (!any)
+  //       continue;
+  //   }
 
-      if (!any)
-        continue;
-    }
+  //   ++passFull;
 
-    ++passFull;
+  //   // Plots that require all cuts
+  //   for (auto* plot : postFull_) {
+  //     if (printLevel_ > 3)
+  //       std::cout << "        Filling " << plot->getObj()->GetName() << std::endl;
 
-    // Plots that require all cuts
-    for (auto* plot : postFull_) {
-      if (printLevel_ > 3)
-        std::cout << "        Filling " << plot->getObj()->GetName() << std::endl;
+  //     plot->fill(eventWeights, fullResults);
+  //   }
+  // }
 
-      plot->fill(eventWeights, fullResults);
-    }
-  }
+  // if (tree_.GetEntryList() != nullptr) {
+  //   auto* elist(tree_.GetEntryList());
+  //   tree_.SetEntryList(nullptr);
+  //   delete elist;
+  // }
 
-  if (tree_.GetEntryList() != nullptr) {
-    auto* elist(tree_.GetEntryList());
-    tree_.SetEntryList(nullptr);
-    delete elist;
-  }
+  // delete baseResults;
+  // delete fullResults;
+  // delete weightF;
 
-  delete baseResults;
-  delete fullResults;
-  delete weightF;
+  // totalEvents_ = iEntry;
 
-  totalEvents_ = iEntry;
+  // if (printLevel_ >= 0) {
+  //   std::cout << "\r      " << iEntry << " events";
+  //   std::cout << std::endl;
+  // }
 
-  if (printLevel_ >= 0) {
-    std::cout << "\r      " << iEntry << " events";
-    std::cout << std::endl;
-  }
+  // if (printLevel_ > 0) {
+  //   std::cout << "      " << passBase << " passed base selection" << std::endl;
+  //   std::cout << "      " << passFull << " passed full selection" << std::endl;
 
-  if (printLevel_ > 0) {
-    std::cout << "      " << passBase << " passed base selection" << std::endl;
-    std::cout << "      " << passFull << " passed full selection" << std::endl;
-
-    for (auto* plots : {&postFull_, &postBase_, &unconditional_}) {
-      for (auto* plot : *plots)
-        std::cout << "        " << plot->getObj()->GetName() << ": " << plot->getCount() << std::endl;
-    }
-  }
+  //   for (auto* plots : {&postFull_, &postBase_, &unconditional_}) {
+  //     for (auto* plot : *plots)
+  //       std::cout << "        " << plot->getObj()->GetName() << ": " << plot->getCount() << std::endl;
+  //   }
+  // }
 }

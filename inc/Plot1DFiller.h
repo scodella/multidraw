@@ -22,18 +22,17 @@ namespace multidraw {
    */
   class Plot1DFiller : public ExprFiller {
   public:
-    Plot1DFiller() {}
-    Plot1DFiller(TH1& hist, TTreeFormula& expr, TTreeFormula* cuts = nullptr, TTreeFormula* reweight = nullptr, Plot1DOverflowMode mode = kDefault);
+    Plot1DFiller(TH1& hist, TTreeFormula& expr, TTreeFormula* reweight = nullptr, Plot1DOverflowMode mode = kDefault);
     Plot1DFiller(Plot1DFiller const&);
     ~Plot1DFiller() {}
 
-    TObject const* getObj() const override { return hist_; }
-    TH1 const* getHist() const { return hist_; }
+    TObject const& getObj() const override { return hist_; }
+    TH1 const& getHist() const { return hist_; }
 
   private:
     void doFill_(unsigned) override;
 
-    TH1* hist_{nullptr};
+    TH1& hist_;
     Plot1DOverflowMode overflowMode_{kDefault};
   };
 

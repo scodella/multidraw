@@ -2,6 +2,7 @@
 #define multidraw_TreeFiller_h
 
 #include "ExprFiller.h"
+#include "FormulaLibrary.h"
 
 #include "TTree.h"
 
@@ -17,22 +18,23 @@ namespace multidraw {
    */
   class TreeFiller : public ExprFiller {
   public:
-    TreeFiller() {}
-    TreeFiller(TTree& tree, TTreeFormula* cuts = nullptr, TTreeFormula* reweight = nullptr);
+    TreeFiller(TTree& tree, FormulaLibrary* library = nullptr, TTreeFormula* reweight = nullptr);
     TreeFiller(TreeFiller const&);
-    ~TreeFiller() {}
+    ~TreeFiller();
 
-    void addBranch(char const* bname, TTreeFormula& expr);
+    void addBranch(char const* bname, char const* expr);
 
-    TObject const* getObj() const override { return tree_; }
-    TTree const* getTree() const { return tree_; }
+    TObject const& getObj() const override { return tree_; }
+    TTree const& getTree() const { return tree_; }
 
     static unsigned const NBRANCHMAX = 128;
 
   private:
     void doFill_(unsigned) override;
 
-    TTree* tree_{nullptr};
+    TTree& tree_;
+    FormulaLibrary* library_;
+    bool ownLibrary_;
     std::vector<double> bvalues_{};
   };
 

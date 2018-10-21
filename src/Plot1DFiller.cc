@@ -4,9 +4,9 @@
 
 #include <iostream>
 
-multidraw::Plot1DFiller::Plot1DFiller(TH1& _hist, TTreeFormula& _expr, TTreeFormula* _cuts/* = nullptr*/, TTreeFormula* _reweight/* = nullptr*/, Plot1DOverflowMode _mode/* = kDefault*/) :
-  ExprFiller(_cuts, _reweight),
-  hist_(&_hist),
+multidraw::Plot1DFiller::Plot1DFiller(TH1& _hist, TTreeFormula& _expr, TTreeFormula* _reweight/* = nullptr*/, Plot1DOverflowMode _mode/* = kDefault*/) :
+  ExprFiller(_reweight),
+  hist_(_hist),
   overflowMode_(_mode)
 {
   exprs_.push_back(&_expr);
@@ -31,14 +31,14 @@ multidraw::Plot1DFiller::doFill_(unsigned _iD)
   case Plot1DOverflowMode::kDefault:
     break;
   case Plot1DOverflowMode::kDedicated:
-    if (x > hist_->GetXaxis()->GetBinLowEdge(hist_->GetNbinsX()))
-      x = hist_->GetXaxis()->GetBinLowEdge(hist_->GetNbinsX());
+    if (x > hist_.GetXaxis()->GetBinLowEdge(hist_.GetNbinsX()))
+      x = hist_.GetXaxis()->GetBinLowEdge(hist_.GetNbinsX());
     break;
   case Plot1DOverflowMode::kMergeLast:
-    if (x > hist_->GetXaxis()->GetBinUpEdge(hist_->GetNbinsX()))
-      x = hist_->GetXaxis()->GetBinLowEdge(hist_->GetNbinsX());
+    if (x > hist_.GetXaxis()->GetBinUpEdge(hist_.GetNbinsX()))
+      x = hist_.GetXaxis()->GetBinLowEdge(hist_.GetNbinsX());
     break;
   }
 
-  hist_->Fill(x, entryWeight_);
+  hist_.Fill(x, entryWeight_);
 }
