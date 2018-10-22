@@ -1,7 +1,7 @@
 target=libmultidraw.so
 src=$(wildcard src/*.cc)
 obj=$(patsubst src/%.cc,obj/%.o,$(src))
-inc=$(patsubst src/%.cc,inc/%.h,$(src))
+inc=$(patsubst src/%.cc,interface/%.h,$(src))
 
 $(target): $(obj) obj/dict.o
 	g++ -std=c++17 -O2 -fPIC -shared $(shell root-config --libs) -o $@ $^

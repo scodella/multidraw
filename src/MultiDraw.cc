@@ -1,7 +1,7 @@
-#include "../inc/MultiDraw.h"
-#include "../inc/Plot1DFiller.h"
-#include "../inc/TreeFiller.h"
-#include "../inc/FormulaLibrary.h"
+#include "../interface/MultiDraw.h"
+#include "../interface/Plot1DFiller.h"
+#include "../interface/TreeFiller.h"
+#include "../interface/FormulaLibrary.h"
 
 #include "TFile.h"
 #include "TBranch.h"

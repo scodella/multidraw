@@ -1,5 +1,5 @@
-#include "../inc/Cut.h"
-#include "../inc/ExprFiller.h"
+#include "../interface/Cut.h"
+#include "../interface/ExprFiller.h"
 
 #include <iostream>
 

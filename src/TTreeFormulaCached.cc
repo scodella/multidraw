@@ -1,4 +1,4 @@
-#include "../inc/TTreeFormulaCached.h"
+#include "../interface/TTreeFormulaCached.h"
 
 #include "TError.h"
 

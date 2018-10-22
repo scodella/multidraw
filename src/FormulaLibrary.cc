@@ -1,4 +1,4 @@
-#include "../inc/FormulaLibrary.h"
+#include "../interface/FormulaLibrary.h"
 
 #include <iostream>
 #include <sstream>

@@ -1,4 +1,4 @@
-#include "../inc/Evaluable.h"
+#include "../interface/Evaluable.h"
 
 multidraw::Evaluable::Evaluable(InstanceVal const& _inst, NData const& _ndata/* = nullptr*/)
 {
