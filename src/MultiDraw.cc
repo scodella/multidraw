@@ -167,7 +167,7 @@ multidraw::MultiDraw::setReweight(char const* _expr, TObject const* _source/* = 
 }
 
 multidraw::Plot1DFiller&
-multidraw::MultiDraw::addPlot(TH1* _hist, char const* _expr, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/, Plot1DOverflowMode _overflowMode/* = kDefault*/)
+multidraw::MultiDraw::addPlot(TH1* _hist, char const* _expr, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/, Plot1DFiller::OverflowMode _overflowMode/* = kDefault*/)
 {
   TTreeFormulaCached* exprFormula(library_.getFormula(_expr));
 

@@ -2,7 +2,6 @@
 #define multidraw_MultiDraw_h
 
 #include "TTreeFormulaCached.h"
-#include "Flags.h"
 #include "ExprFiller.h"
 #include "Plot1DFiller.h"
 #include "TreeFiller.h"
@@ -70,7 +69,7 @@ namespace multidraw {
      */
     void setReweight(char const* expr, TObject const* source = nullptr);
     //! Add a 1D histogram to fill.
-    Plot1DFiller& addPlot(TH1* hist, char const* expr, char const* cutName = "", char const* reweight = "", Plot1DOverflowMode mode = kDefault);
+    Plot1DFiller& addPlot(TH1* hist, char const* expr, char const* cutName = "", char const* reweight = "", Plot1DFiller::OverflowMode mode = Plot1DFiller::kDefault);
     //! Add a tree to fill.
     TreeFiller& addTree(TTree* tree, char const* cutName = "", char const* reweight = "");
 

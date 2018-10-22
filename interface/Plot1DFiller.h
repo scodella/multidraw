@@ -2,7 +2,6 @@
 #define multidraw_Plot1DFiller_h
 
 #include "ExprFiller.h"
-#include "Flags.h"
 
 #include "TH1.h"
 
@@ -16,13 +15,19 @@ namespace multidraw {
    *  TTreeFormula& expr                  Expression whose evaluated value gets filled to the plot
    *  TTreeFormula* cuts                  If provided and evaluates to 0, the plot is not filled
    *  TTreeFormula* reweight              If provided, evalutaed and used as weight for filling the histogram
-   *  Plot1DOverflowMode overflowBinSize  kDefault: overflow is not handled explicitly (i.e. TH1 fills the n+1-st bin)
+   *  OverflowMode overflowBinSize  kDefault: overflow is not handled explicitly (i.e. TH1 fills the n+1-st bin)
    *                                      kDedicated: an overflow bin with size (original width)*overflowBinSize is created
    *                                      kMergeLast: overflow is added to the last bin
    */
   class Plot1DFiller : public ExprFiller {
   public:
-    Plot1DFiller(TH1& hist, TTreeFormula& expr, TTreeFormula* reweight = nullptr, Plot1DOverflowMode mode = kDefault);
+    enum OverflowMode {
+      kDefault,
+      kDedicated,
+      kMergeLast
+    };
+
+    Plot1DFiller(TH1& hist, TTreeFormula& expr, TTreeFormula* reweight = nullptr, OverflowMode mode = kDefault);
     Plot1DFiller(Plot1DFiller const&);
     ~Plot1DFiller() {}
 
@@ -33,7 +38,7 @@ namespace multidraw {
     void doFill_(unsigned) override;
 
     TH1& hist_;
-    Plot1DOverflowMode overflowMode_{kDefault};
+    OverflowMode overflowMode_{kDefault};
   };
 
 }

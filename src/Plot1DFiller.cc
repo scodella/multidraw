@@ -4,7 +4,7 @@
 
 #include <iostream>
 
-multidraw::Plot1DFiller::Plot1DFiller(TH1& _hist, TTreeFormula& _expr, TTreeFormula* _reweight/* = nullptr*/, Plot1DOverflowMode _mode/* = kDefault*/) :
+multidraw::Plot1DFiller::Plot1DFiller(TH1& _hist, TTreeFormula& _expr, TTreeFormula* _reweight/* = nullptr*/, Plot1DFiller::OverflowMode _mode/* = kDefault*/) :
   ExprFiller(_reweight),
   hist_(_hist),
   overflowMode_(_mode)
@@ -28,13 +28,13 @@ multidraw::Plot1DFiller::doFill_(unsigned _iD)
   double x(exprs_[0]->EvalInstance(_iD));
 
   switch (overflowMode_) {
-  case Plot1DOverflowMode::kDefault:
+  case OverflowMode::kDefault:
     break;
-  case Plot1DOverflowMode::kDedicated:
+  case OverflowMode::kDedicated:
     if (x > hist_.GetXaxis()->GetBinLowEdge(hist_.GetNbinsX()))
       x = hist_.GetXaxis()->GetBinLowEdge(hist_.GetNbinsX());
     break;
-  case Plot1DOverflowMode::kMergeLast:
+  case OverflowMode::kMergeLast:
     if (x > hist_.GetXaxis()->GetBinUpEdge(hist_.GetNbinsX()))
       x = hist_.GetXaxis()->GetBinLowEdge(hist_.GetNbinsX());
     break;
