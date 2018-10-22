@@ -44,7 +44,7 @@ with open(linkdef_path, 'w') as out:
             continue
 
         if fname == 'TTreeFormulaCached.h':
-            out.write('#pragma link C++ class TTreeFormulaCached;\n')
+            out.write('#pragma link C++ class TTreeFormulaCached+;\n')
         else:
             out.write('#pragma link C++ class multidraw::%s;\n' % fname[:-2])
 
@@ -52,8 +52,9 @@ with open(linkdef_path, 'w') as out:
 
 if args.cmssw:
     with open(thisdir + '/BuildFile.xml', 'w') as out:
-        out.write('<use name="rootcore"/>\n')
         out.write('<use name="root"/>\n')
+        out.write('<use name="rootcore"/>\n')
+        out.write('<use name="rootgraphics"/>\n')
         out.write('<export>\n')
         out.write('  <lib name="1"/>\n')
         out.write('</export>\n')
