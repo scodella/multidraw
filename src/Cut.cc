@@ -59,8 +59,8 @@ multidraw::Cut::resetCount()
     filler->resetCount();
 }
 
-void
-multidraw::Cut::evaluateAndFill(std::vector<double> const& _eventWeights)
+bool
+multidraw::Cut::evaluate()
 {
   unsigned nD(cut_.getNdata());
 
@@ -81,13 +81,16 @@ multidraw::Cut::evaluateAndFill(std::vector<double> const& _eventWeights)
     if (printLevel_ > 2)
         std::cout << "        " << name_ << " iteration " << iD << " pass" << std::endl;
 
-    if (cut_.singleValue())
+    if (!cut_.singleValue())
       (*instanceMask_)[iD] = true;
   }
   
-  if (!any)
-    return;
+  return any;
+}
 
+void
+multidraw::Cut::fillExprs(std::vector<double> const& _eventWeights)
+{
   ++counter_;
 
   for (auto* filler : fillers_)

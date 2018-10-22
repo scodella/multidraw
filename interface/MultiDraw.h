@@ -51,6 +51,8 @@ namespace multidraw {
     void setFilter(char const* expr);
     //! Add a new cut.
     void addCut(char const* name, char const* expr);
+    //! Remove a cut.
+    void removeCut(char const* name);
     //! Apply a constant weight (e.g. luminosity times cross section) to all events.
     void setConstantWeight(double l) { constWeight_ = l; }
     //! Set a prescale factor

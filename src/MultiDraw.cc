@@ -42,19 +42,35 @@ multidraw::MultiDraw::setFilter(char const* _expr)
 void
 multidraw::MultiDraw::addCut(char const* _name, char const* _expr)
 {
-  try {
-    findCut_(_name);
+  auto cutItr(std::find_if(cuts_.begin(), cuts_.end(), [_name](Cut* const& _cut)->bool { return _cut->getName() == _name; }));
 
+  if (cutItr != cuts_.end()) {
     std::stringstream ss;
     ss << "Cut named " << _name << " already exists";
     std::cout << ss.str() << std::endl;
     throw std::invalid_argument(ss.str());
   }
-  catch (std::runtime_error&) {
-    // pass
-  }
 
   cuts_.push_back(new Cut(_name, *library_.getFormula(_expr)));
+}
+
+void
+multidraw::MultiDraw::removeCut(char const* _name)
+{
+  if (_name == nullptr || std::strlen(_name) == 0)
+    throw std::invalid_argument("Cannot delete default cut");
+
+  auto cutItr(std::find_if(cuts_.begin(), cuts_.end(), [_name](Cut* const& _cut)->bool { return _cut->getName() == _name; }));
+
+  if (cutItr == cuts_.end()) {
+    std::stringstream ss;
+    ss << "Cut \"" << _name << "\" not defined";
+    std::cerr << ss.str() << std::endl;
+    throw std::runtime_error(ss.str());
+  }
+
+  cuts_.erase(cutItr);
+  delete *cutItr;
 }
 
 void
@@ -235,7 +251,6 @@ multidraw::MultiDraw::findCut_(TString const& _cutName) const
   return **cutItr;
 }
 
-
 void
 multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
 {
@@ -247,9 +262,17 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
   else if (printLevel_ >= 4)
     printEvery = 1;
 
+  // Select only the cuts with at least one filler
+  std::vector<Cut*> cuts;
+
   for (auto* cut : cuts_) {
+    if (cut->getName().Length() != 0 && cut->getNFillers() == 0)
+      continue;
+    
     cut->setPrintLevel(printLevel_);
     cut->resetCount();
+
+    cuts.push_back(cut);
   }
 
   std::vector<double> eventWeights;
@@ -279,7 +302,7 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
   TBranch* evtNumBranch(nullptr);
   
   while (iEntry != iEntryMax) {
-    long long iLocalEntry(tree_.LoadTree(iEntry));
+    long long iLocalEntry(tree_.LoadTree(iEntry++));
     if (iLocalEntry < 0)
       break;
 
@@ -364,6 +387,10 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
     for (auto& ff : library_)
       ff.second->ResetCache();
 
+    // First cut (name "") is a global filter
+    if (!cuts[0]->evaluate())
+      continue;
+
     if (weightBranch != nullptr) {
       weightBranch->GetEntry(iLocalEntry);
 
@@ -391,8 +418,11 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
       std::cout << std::endl;
     }
 
-    for (auto* cut : cuts_)
-      cut->evaluateAndFill(eventWeights);
+    cuts[0]->fillExprs(eventWeights);
+    for (unsigned iC(0); iC != cuts.size(); ++iC) {
+      if (cuts[iC]->evaluate())
+        cuts[iC]->fillExprs(eventWeights);
+    }
   }
 
   totalEvents_ = iEntry;
@@ -403,7 +433,7 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
   }
 
   if (printLevel_ > 0) {
-    for (auto* cut : cuts_) {
+    for (auto* cut : cuts) {
       std::cout << "        Cut " << cut->getName() << ": passed total " << cut->getCount() << std::endl;
       for (unsigned iF(0); iF != cut->getNFillers(); ++iF) {
         auto* filler(cut->getFiller(iF));

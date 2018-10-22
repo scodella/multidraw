@@ -29,7 +29,8 @@ namespace multidraw {
     void setPrintLevel(int);
     void resetCount();
     unsigned getCount() const { return counter_; }
-    void evaluateAndFill(std::vector<double> const& eventWeights);
+    bool evaluate();
+    void fillExprs(std::vector<double> const& eventWeights);
 
   protected:
     TString name_;
@@ -38,7 +39,6 @@ namespace multidraw {
     int printLevel_{0};
     unsigned counter_{0};
 
-    // used only in evaluateAndFill but defined as a class member for performance
     std::vector<bool>* instanceMask_{nullptr};
   };
 
