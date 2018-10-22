@@ -39,10 +39,11 @@ with open(linkdef_path, 'w') as out:
     out.write('\n')
     out.write('#pragma link C++ namespace multidraw;\n')
 
-    for fname in os.listdir('inc'):
+    for fname in os.listdir(thisdir + '/interface'):
         if not fname.endswith('.h'):
             continue
-        elif fname == 'TTreeFormulaCached.h':
+
+        if fname == 'TTreeFormulaCached.h':
             out.write('#pragma link C++ class TTreeFormulaCached;\n')
         else:
             out.write('#pragma link C++ class multidraw::%s;\n' % fname[:-2])

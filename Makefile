@@ -13,7 +13,7 @@ obj/dict.o: $(inc) obj/LinkDef.h
 
 obj/LinkDef.h:
 	mkdir -p obj
-	$(shell ./mkLinkDef.py)
+	./mkLinkDef.py
 
 obj/%.o: src/%.cc $(inc)
 	mkdir -p obj
