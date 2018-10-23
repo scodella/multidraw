@@ -320,7 +320,8 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
   }
 
   // Also delete unused formulas
-  library_.prune();
+  // Cannot do this because there are formulas captured by lambdas
+  //  library_.prune();
 
   std::vector<double> eventWeights;
 
@@ -507,7 +508,7 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
     }
 
     cuts[0]->fillExprs(eventWeights);
-    for (unsigned iC(0); iC != cuts.size(); ++iC) {
+    for (unsigned iC(1); iC != cuts.size(); ++iC) {
       if (cuts[iC]->evaluate())
         cuts[iC]->fillExprs(eventWeights);
     }

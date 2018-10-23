@@ -4,15 +4,15 @@
 #include <iostream>
 
 multidraw::Cut::Cut(char const* _name, TTreeFormulaCachedPtr const& _formula) :
-  name_(_name),
-  cut_(_formula)
+  name_(_name)
 {
+  setFormula(_formula);
 }
 
 multidraw::Cut::Cut(char const* _name, Evaluable::InstanceVal const& _inst, Evaluable::NData const& _ndata/* = nullptr*/) :
-  name_(_name),
-  cut_(_inst, _ndata)
+  name_(_name)
 {
+  setFormula(_inst, _ndata);
 }
 
 multidraw::Cut::~Cut()
