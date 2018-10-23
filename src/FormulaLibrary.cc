@@ -8,7 +8,7 @@ multidraw::FormulaLibrary::FormulaLibrary(TTree& _tree) :
 {
 }
 
-std::shared_ptr<TTreeFormulaCached> const&
+TTreeFormulaCachedPtr const&
 multidraw::FormulaLibrary::getFormula(char const* _expr)
 {
   auto fItr(this->find(_expr));
@@ -24,7 +24,7 @@ multidraw::FormulaLibrary::getFormula(char const* _expr)
     throw std::invalid_argument(ss.str());
   }
 
-  fItr = this->emplace(TString(_expr), std::shared_ptr<TTreeFormulaCached>(formula)).first;
+  fItr = this->emplace(TString(_expr), TTreeFormulaCachedPtr(formula)).first;
 
   return fItr->second;
 }

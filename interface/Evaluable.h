@@ -1,10 +1,9 @@
 #ifndef multidraw_Evaluable_h
 #define multidraw_Evaluable_h
 
-#include <functional>
-#include <memory>
+#include "TTreeFormulaCached.h"
 
-class TTreeFormulaCached;
+#include <functional>
 
 namespace multidraw {
 
@@ -15,13 +14,13 @@ namespace multidraw {
 
     Evaluable() {}
     Evaluable(InstanceVal const&, NData const& = nullptr);
-    Evaluable(std::shared_ptr<TTreeFormulaCached> const&);
+    Evaluable(TTreeFormulaCachedPtr const&);
     Evaluable(Evaluable const&);
     ~Evaluable() {}
     Evaluable& operator=(Evaluable const&);
 
     void set(InstanceVal const&, NData const& = nullptr);
-    void set(std::shared_ptr<TTreeFormulaCached> const&);
+    void set(TTreeFormulaCachedPtr const&);
     void reset();
 
     bool isValid() const { return isFormula() || isFunction(); }
@@ -34,7 +33,7 @@ namespace multidraw {
   private:
     InstanceVal instanceVal_{};
     NData ndata_{};
-    std::shared_ptr<TTreeFormulaCached> formula_{};
+    TTreeFormulaCachedPtr formula_{};
     bool singleValue_{false};
   };
 

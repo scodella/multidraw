@@ -1,9 +1,8 @@
 #include "../interface/ExprFiller.h"
-#include "../interface/TTreeFormulaCached.h"
 
 #include <iostream>
 
-multidraw::ExprFiller::ExprFiller(std::shared_ptr<TTreeFormulaCached> const& _reweight/* = nullptr*/) :
+multidraw::ExprFiller::ExprFiller(TTreeFormulaCachedPtr const& _reweight/* = nullptr*/) :
   reweight_(_reweight)
 {
 }

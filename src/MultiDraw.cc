@@ -1,7 +1,4 @@
 #include "../interface/MultiDraw.h"
-#include "../interface/Plot1DFiller.h"
-#include "../interface/TreeFiller.h"
-#include "../interface/FormulaLibrary.h"
 
 #include "TFile.h"
 #include "TBranch.h"
@@ -12,7 +9,6 @@
 #include "TLeafD.h"
 #include "TLeafI.h"
 #include "TLeafL.h"
-#include "TEntryList.h"
 
 #include <stdexcept>
 #include <cstring>
@@ -212,9 +208,9 @@ multidraw::MultiDraw::setPrescale(unsigned _p, char const* _evtNumBranch/* = ""*
 multidraw::Plot1DFiller&
 multidraw::MultiDraw::addPlot(TH1* _hist, char const* _expr, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/, Plot1DFiller::OverflowMode _overflowMode/* = kDefault*/)
 {
-  std::shared_ptr<TTreeFormulaCached> exprFormula(library_.getFormula(_expr));
+  auto& exprFormula(library_.getFormula(_expr));
 
-  auto newPlot1D([_hist, _overflowMode, &exprFormula](std::shared_ptr<TTreeFormulaCached> const& _reweightFormula)->ExprFiller* {
+  auto newPlot1D([_hist, _overflowMode, &exprFormula](TTreeFormulaCachedPtr const& _reweightFormula)->ExprFiller* {
       return new Plot1DFiller(*_hist, exprFormula, _reweightFormula, _overflowMode);
     });
 
@@ -229,10 +225,31 @@ multidraw::MultiDraw::addPlot(TH1* _hist, char const* _expr, char const* _cutNam
   return static_cast<Plot1DFiller&>(addObj_(_cutName, _reweight, newPlot1D));
 }
 
+multidraw::Plot2DFiller&
+multidraw::MultiDraw::addPlot2D(TH2* _hist, char const* _xexpr, char const* _yexpr, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/)
+{
+  auto& xexprFormula(library_.getFormula(_xexpr));
+  auto& yexprFormula(library_.getFormula(_yexpr));
+
+  auto newPlot2D([_hist, &xexprFormula, &yexprFormula](TTreeFormulaCachedPtr const& _reweightFormula)->ExprFiller* {
+      return new Plot2DFiller(*_hist, xexprFormula, yexprFormula, _reweightFormula);
+    });
+
+  if (printLevel_ > 1) {
+    std::cout << "\nAdding Plot " << _hist->GetName() << " with expression " << _yexpr << ":" << _xexpr << std::endl;
+    if (_cutName != nullptr && std::strlen(_cutName) != 0)
+      std::cout << " Cut: " << _cutName << std::endl;
+    if (_reweight != nullptr && std::strlen(_reweight) != 0)
+      std::cout << " Reweight: " << _reweight << std::endl;
+  }
+
+  return static_cast<Plot2DFiller&>(addObj_(_cutName, _reweight, newPlot2D));
+}
+
 multidraw::TreeFiller&
 multidraw::MultiDraw::addTree(TTree* _tree, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/)
 {
-  auto newTree([this, _tree](std::shared_ptr<TTreeFormulaCached> const& _reweightFormula)->ExprFiller* {
+  auto newTree([this, _tree](TTreeFormulaCachedPtr const& _reweightFormula)->ExprFiller* {
       return new TreeFiller(*_tree, this->library_, _reweightFormula);
     });
 
@@ -252,7 +269,7 @@ multidraw::MultiDraw::addObj_(TString const& _cutName, char const* _reweight, Ob
 {
   auto& cut(findCut_(_cutName));
 
-  std::shared_ptr<TTreeFormulaCached> reweightFormula(nullptr);
+  TTreeFormulaCachedPtr reweightFormula(nullptr);
   if (_reweight != nullptr && std::strlen(_reweight) != 0)
     reweightFormula = library_.getFormula(_reweight);
 

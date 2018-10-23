@@ -3,7 +3,7 @@
 
 #include <iostream>
 
-multidraw::Cut::Cut(char const* _name, std::shared_ptr<TTreeFormulaCached> const& _formula) :
+multidraw::Cut::Cut(char const* _name, TTreeFormulaCachedPtr const& _formula) :
   name_(_name),
   cut_(_formula)
 {
@@ -22,7 +22,7 @@ multidraw::Cut::~Cut()
 }
 
 void
-multidraw::Cut::setFormula(std::shared_ptr<TTreeFormulaCached> const& _formula)
+multidraw::Cut::setFormula(TTreeFormulaCachedPtr const& _formula)
 {
   cut_.set(_formula);
 

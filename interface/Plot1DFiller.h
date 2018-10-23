@@ -1,11 +1,10 @@
 #ifndef multidraw_Plot1DFiller_h
 #define multidraw_Plot1DFiller_h
 
+#include "TTreeFormulaCached.h"
 #include "ExprFiller.h"
 
 #include "TH1.h"
-
-#include <memory>
 
 namespace multidraw {
 
@@ -13,13 +12,12 @@ namespace multidraw {
   /*!
    * The class is to be used within MultiDraw, and is instantiated by addPlot().
    * Arguments:
-   *  TH1& hist                           The actual histogram object (the user is responsible for creating it)
-   *  TTreeFormula& expr                  Expression whose evaluated value gets filled to the plot
-   *  TTreeFormula* cuts                  If provided and evaluates to 0, the plot is not filled
-   *  TTreeFormula* reweight              If provided, evalutaed and used as weight for filling the histogram
-   *  OverflowMode overflowBinSize  kDefault: overflow is not handled explicitly (i.e. TH1 fills the n+1-st bin)
-   *                                      kDedicated: an overflow bin with size (original width)*overflowBinSize is created
-   *                                      kMergeLast: overflow is added to the last bin
+   *  hist      The actual histogram object (the user is responsible for creating it)
+   *  expr      Expression whose evaluated value gets filled to the plot
+   *  reweight  If provided, evalutaed and used as weight for filling the histogram
+   *  mode      kDefault: overflow is not handled explicitly (i.e. TH1 fills the n+1-st bin)
+   *            kDedicated: an overflow bin with size (original width)*overflowBinSize is created
+   *            kMergeLast: overflow is added to the last bin
    */
   class Plot1DFiller : public ExprFiller {
   public:
@@ -29,7 +27,7 @@ namespace multidraw {
       kMergeLast
     };
 
-    Plot1DFiller(TH1& hist, std::shared_ptr<TTreeFormulaCached> const& expr, std::shared_ptr<TTreeFormulaCached> const& reweight = nullptr, OverflowMode mode = kDefault);
+    Plot1DFiller(TH1& hist, TTreeFormulaCachedPtr const& expr, TTreeFormulaCachedPtr const& reweight = nullptr, OverflowMode mode = kDefault);
     Plot1DFiller(Plot1DFiller const&);
     ~Plot1DFiller() {}
 

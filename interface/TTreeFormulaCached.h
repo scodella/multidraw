@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <utility>
+#include <memory>
 
 class TObjArray;
 
@@ -34,6 +35,8 @@ private:
 
   ClassDef(TTreeFormulaCached, 1)
 };
+
+typedef std::shared_ptr<TTreeFormulaCached> TTreeFormulaCachedPtr;
 
 /*
   TFormula has no foolproof mechanism to signal a failure of expression compilation.

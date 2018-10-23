@@ -1,13 +1,11 @@
 #ifndef multidraw_ExprFiller_h
 #define multidraw_ExprFiller_h
 
+#include "TTreeFormulaCached.h"
+
 #include "TString.h"
 
 #include <vector>
-#include <memory>
-
-class TObject;
-class TTreeFormulaCached;
 
 namespace multidraw {
 
@@ -18,7 +16,7 @@ namespace multidraw {
    */
   class ExprFiller {
   public:
-    ExprFiller(std::shared_ptr<TTreeFormulaCached> const& reweight = nullptr);
+    ExprFiller(TTreeFormulaCachedPtr const& reweight = nullptr);
     ExprFiller(ExprFiller const&);
     virtual ~ExprFiller() {}
 
@@ -34,8 +32,8 @@ namespace multidraw {
   protected:
     virtual void doFill_(unsigned) = 0;
 
-    std::vector<std::shared_ptr<TTreeFormulaCached>> exprs_{};
-    std::shared_ptr<TTreeFormulaCached> reweight_{nullptr};
+    std::vector<TTreeFormulaCachedPtr> exprs_{};
+    TTreeFormulaCachedPtr reweight_{nullptr};
     double entryWeight_{1.};
     unsigned counter_{0};
 

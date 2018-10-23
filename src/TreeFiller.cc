@@ -1,9 +1,8 @@
 #include "../interface/TreeFiller.h"
-#include "../interface/TTreeFormulaCached.h"
 
 #include <iostream>
 
-multidraw::TreeFiller::TreeFiller(TTree& _tree, FormulaLibrary& _library, std::shared_ptr<TTreeFormulaCached> const& _reweight/* = nullptr*/) :
+multidraw::TreeFiller::TreeFiller(TTree& _tree, FormulaLibrary& _library, TTreeFormulaCachedPtr const& _reweight/* = nullptr*/) :
   ExprFiller(_reweight),
   tree_(_tree),
   library_(_library)
@@ -48,13 +47,13 @@ multidraw::TreeFiller::doFill_(unsigned _iD)
     std::cout << "            Fill(";
 
   for (unsigned iE(0); iE != exprs_.size(); ++iE) {
+    bvalues_[iE] = exprs_[iE]->EvalInstance(_iD);
+
     if (printLevel_ > 3) {
-      std::cout << exprs_[iE]->EvalInstance(_iD);
+      std::cout << bvalues_[iE];
       if (iE != exprs_.size() - 1)
         std::cout << ", ";
     }
-
-    bvalues_[iE] = exprs_[iE]->EvalInstance(_iD);
   }
 
   if (printLevel_ > 3)

@@ -1,12 +1,11 @@
 #ifndef multidraw_TreeFiller_h
 #define multidraw_TreeFiller_h
 
+#include "TTreeFormulaCached.h"
 #include "ExprFiller.h"
 #include "FormulaLibrary.h"
 
 #include "TTree.h"
-
-#include <memory>
 
 namespace multidraw {
 
@@ -14,13 +13,13 @@ namespace multidraw {
   /*!
    * The class is to be used within MultiDraw, and is instantiated by addTree().
    * Arguments:
-   *  TTree& tree             The actual tree object (the user is responsible to create it)
-   *  TTreeFormula* cuts      If provided and evaluates to 0, the tree is not filled
-   *  TTreeFormula* reweight  If provided, evalutaed and used as weight for filling the histogram
+   *  tree      The actual tree object (the user is responsible to create it)
+   *  library   FormulaLibrary to draw formula objects from
+   *  reweight  If provided, evalutaed and used as weight for filling the histogram
    */
   class TreeFiller : public ExprFiller {
   public:
-    TreeFiller(TTree& tree, FormulaLibrary& library, std::shared_ptr<TTreeFormulaCached> const& reweight = nullptr);
+    TreeFiller(TTree& tree, FormulaLibrary& library, TTreeFormulaCachedPtr const& reweight = nullptr);
     TreeFiller(TreeFiller const&);
     ~TreeFiller() {}
 

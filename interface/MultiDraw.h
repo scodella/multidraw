@@ -4,6 +4,7 @@
 #include "TTreeFormulaCached.h"
 #include "ExprFiller.h"
 #include "Plot1DFiller.h"
+#include "Plot2DFiller.h"
 #include "TreeFiller.h"
 #include "Cut.h"
 #include "Evaluable.h"
@@ -11,10 +12,11 @@
 
 #include "TChain.h"
 #include "TH1.h"
+#include "TH2.h"
+#include "TTree.h"
 #include "TString.h"
 
 #include <vector>
-#include <memory>
 
 namespace multidraw {
 
@@ -87,6 +89,8 @@ namespace multidraw {
     void setPrescale(unsigned p, char const* evtNumBranch = "");
     //! Add a 1D histogram to fill.
     Plot1DFiller& addPlot(TH1* hist, char const* expr, char const* cutName = "", char const* reweight = "", Plot1DFiller::OverflowMode mode = Plot1DFiller::kDefault);
+    //! Add a 2D histogram to fill.
+    Plot2DFiller& addPlot2D(TH2* hist, char const* xexpr, char const* yexpr, char const* cutName = "", char const* reweight = "");
     //! Add a tree to fill.
     TreeFiller& addTree(TTree* tree, char const* cutName = "", char const* reweight = "");
 
@@ -102,7 +106,7 @@ namespace multidraw {
 
   private:
     //! Handle addPlot and addTree with the same interface (requires a callback to generate the right object)
-    typedef std::function<ExprFiller*(std::shared_ptr<TTreeFormulaCached> const&)> ObjGen;
+    typedef std::function<ExprFiller*(TTreeFormulaCachedPtr const&)> ObjGen;
     ExprFiller& addObj_(TString const& cutName, char const* reweight, ObjGen const&);
     Cut& findCut_(TString const& cutName) const;
 

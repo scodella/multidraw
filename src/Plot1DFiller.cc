@@ -1,9 +1,8 @@
 #include "../interface/Plot1DFiller.h"
-#include "../interface/TTreeFormulaCached.h"
 
 #include <iostream>
 
-multidraw::Plot1DFiller::Plot1DFiller(TH1& _hist, std::shared_ptr<TTreeFormulaCached> const& _expr, std::shared_ptr<TTreeFormulaCached> const& _reweight/* = nullptr*/, Plot1DFiller::OverflowMode _mode/* = kDefault*/) :
+multidraw::Plot1DFiller::Plot1DFiller(TH1& _hist, TTreeFormulaCachedPtr const& _expr, TTreeFormulaCachedPtr const& _reweight/* = nullptr*/, Plot1DFiller::OverflowMode _mode/* = kDefault*/) :
   ExprFiller(_reweight),
   hist_(_hist),
   overflowMode_(_mode)

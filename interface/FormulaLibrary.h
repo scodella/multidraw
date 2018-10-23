@@ -6,19 +6,18 @@
 #include "TString.h"
 
 #include <map>
-#include <memory>
 
 class TTree;
 
 namespace multidraw {
 
-  class FormulaLibrary : public std::map<TString, std::shared_ptr<TTreeFormulaCached>> {
+  class FormulaLibrary : public std::map<TString, TTreeFormulaCachedPtr> {
   public:
     FormulaLibrary(TTree&);
     ~FormulaLibrary() {}
 
     //! Find the formula object matching the expr. If not found, create new.
-    std::shared_ptr<TTreeFormulaCached> const& getFormula(char const* expr);
+    TTreeFormulaCachedPtr const& getFormula(char const* expr);
 
     //! Erase formulas with only one ref count (i.e. by myself)
     void prune();

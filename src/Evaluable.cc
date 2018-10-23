@@ -1,12 +1,11 @@
 #include "../interface/Evaluable.h"
-#include "../interface/TTreeFormulaCached.h"
 
 multidraw::Evaluable::Evaluable(InstanceVal const& _inst, NData const& _ndata/* = nullptr*/)
 {
   set(_inst, _ndata);
 }
 
-multidraw::Evaluable::Evaluable(std::shared_ptr<TTreeFormulaCached> const& _formula)
+multidraw::Evaluable::Evaluable(TTreeFormulaCachedPtr const& _formula)
 {
   set(_formula);
 }
@@ -46,7 +45,7 @@ multidraw::Evaluable::set(InstanceVal const& _inst, NData const& _ndata/* = null
 }
 
 void
-multidraw::Evaluable::set(std::shared_ptr<TTreeFormulaCached> const& _formula)
+multidraw::Evaluable::set(TTreeFormulaCachedPtr const& _formula)
 {
   formula_ = _formula;
   singleValue_ = false;
