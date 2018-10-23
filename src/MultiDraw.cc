@@ -29,6 +29,8 @@ multidraw::MultiDraw::MultiDraw(char const* _treeName/* = "events"*/) :
 
 multidraw::MultiDraw::~MultiDraw()
 {
+  tree_.SetEntryList(nullptr);
+
   for (auto* cut : cuts_)
     delete cut;
 
@@ -44,6 +46,17 @@ multidraw::MultiDraw::addFriend(char const* _treeName, TObjArray const* _paths)
   auto* chain(new TChain(_treeName));
   for (auto* path : *_paths)
     chain->Add(path->GetName());
+
+  long nBase(tree_.GetEntries());
+  long nFriend(chain->GetEntries());
+
+  if (nFriend != nBase) {
+    std::stringstream ss;
+    ss << "Friend tree entry number mismatch:";
+    ss << " base tree " << nBase << " != " << " friend tree " << nFriend;
+    std::cout << ss.str() << std::endl;
+    throw std::runtime_error(ss.str());
+  }
 
   friendTrees_.push_back(chain);
 
@@ -91,20 +104,23 @@ multidraw::MultiDraw::removeCut(char const* _name)
 }
 
 void
-multidraw::MultiDraw::setConstantWeight(double _w, int _treeNumber/* = -1*/)
+multidraw::MultiDraw::setConstantWeight(double _w, int _treeNumber/* = -1*/, bool _exclusive/* = true*/)
 {
   if (_treeNumber >= 0)
-    treeWeight_[_treeNumber] = _w;
+    treeWeight_[_treeNumber] = std::make_pair(_w, _exclusive);
   else
     globalWeight_ = _w;
 }
 
 void
-multidraw::MultiDraw::setReweight(char const* _expr, TObject const* _source/* = nullptr*/, int _treeNumber/* = -1*/)
+multidraw::MultiDraw::setReweight(char const* _expr, TObject const* _source/* = nullptr*/, int _treeNumber/* = -1*/, bool _exclusive/* = true*/)
 {
-  Evaluable& reweight(_treeNumber >= 0 ? treeReweight_[_treeNumber] : globalReweight_);
+  Evaluable& reweight(_treeNumber >= 0 ? treeReweight_[_treeNumber].first : globalReweight_);
 
   reweight.reset();
+
+  if (_treeNumber >= 0)
+    treeReweight_[_treeNumber].second = _exclusive;
 
   if (!_expr || std::strlen(_expr) == 0)
     return;
@@ -317,9 +333,15 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
 
   double treeWeight(1.);
   Evaluable* treeReweight{nullptr};
+  bool exclusiveTreeReweight(false);
   
   while (iEntry != iEntryMax) {
-    long long iLocalEntry(tree_.LoadTree(iEntry++));
+    // iEntryNumber != iEntry if tree has a TEntryList set
+    long long iEntryNumber(tree_.GetEntryNumber(iEntry++));
+    if (iEntryNumber < 0)
+      break;
+
+    long long iLocalEntry(tree_.LoadTree(iEntryNumber));
     if (iLocalEntry < 0)
       break;
 
@@ -391,8 +413,10 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
       auto wItr(treeWeight_.find(treeNumber));
       if (wItr == treeWeight_.end())
         treeWeight = globalWeight_;
+      else if (wItr->second.second) // exclusive tree-by-tree weight
+        treeWeight = wItr->second.first;
       else
-        treeWeight = wItr->second;        
+        treeWeight = globalWeight_ * wItr->second.first;
 
       auto rItr(treeReweight_.find(treeNumber));
       if (rItr == treeReweight_.end()) {
@@ -400,9 +424,13 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
           treeReweight = &globalReweight_;
         else
           treeReweight = nullptr;
+
+        exclusiveTreeReweight = true;
       }
-      else
-        treeReweight = &rItr->second;
+      else {
+        treeReweight = &rItr->second.first;
+        exclusiveTreeReweight = rItr->second.second;
+      }
     }
 
     if (prescale_ > 1) {
@@ -438,10 +466,18 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
       if (nD == 0)
         continue; // skip event
 
+      if (!exclusiveTreeReweight && globalReweight_.isValid()) {
+        // just to load the values
+        globalReweight_.getNdata();
+      }
+
       eventWeights.resize(nD);
 
-      for (unsigned iD(0); iD != nD; ++iD)
+      for (unsigned iD(0); iD != nD; ++iD) {
         eventWeights[iD] = treeReweight->evalInstance(iD) * commonWeight;
+        if (!exclusiveTreeReweight && globalReweight_.isValid())
+          eventWeights[iD] *= globalReweight_.evalInstance(iD);
+      }
     }
     else
       eventWeights.assign(1, commonWeight);

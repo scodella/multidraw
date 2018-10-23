@@ -49,6 +49,8 @@ namespace multidraw {
     void addInputPath(char const* path) { tree_.Add(path); }
     //! Add a friend tree (not tested)
     void addFriend(char const* treeName, TObjArray const* paths);
+    //! Apply an entry list.
+    void applyEntryList(TEntryList* elist) { tree_.SetEntryList(elist); }
     //! Set the name and the C variable type of the weight branch. Pass an empty string to unset.
     void setWeightBranch(char const* bname) { weightBranchName_ = bname; }
     //! Set a global filtering cut. Events not passing this expression are not considered at all.
@@ -61,9 +63,12 @@ namespace multidraw {
     /*
      * Tree number option is useful when e.g. running over multiple MC samples with different cross
      * sections in one shot.
+     * When tree number >= 0 and exclusive = true, the global weight is not applied to the events
+     * from the given tree number. If exclusive = false, the tree-by-tree weight is applied on top
+     * of the global one.
      */
-    void setConstantWeight(double w, int treeNumber = -1);
-    //! Set a global reweight, possibly varying by input tree.
+    void setConstantWeight(double w, int treeNumber = -1, bool exclusive = true);
+    //! Set an overall reweight, possibly varying by input tree.
     /*!
      * Reweight factor can be set in two ways. If the second argument is nullptr,
      * the value of expr in every event is used as the weight. If instead a TH1,
@@ -72,7 +77,7 @@ namespace multidraw {
      * Tree number option is useful when e.g. running over multiple MC samples with different cross
      * sections in one shot.
      */
-    void setReweight(char const* expr, TObject const* source = nullptr, int treeNumber = -1);
+    void setReweight(char const* expr, TObject const* source = nullptr, int treeNumber = -1, bool exclusive = true);
     //! Set a prescale factor
     /*!
      * When prescale_ > 1, only events that satisfy eventNumber % prescale_ == 0 are read.
@@ -89,9 +94,11 @@ namespace multidraw {
     void execute(long nEntries = -1, long firstEntry = 0);
 
     void setPrintLevel(int l) { printLevel_ = l; }
-    long getTotalEvents() { return totalEvents_; }
+    long getTotalEvents() const { return totalEvents_; }
 
     unsigned numObjs() const;
+
+    TChain const& getTree() const { return tree_; }
 
   private:
     //! Handle addPlot and addTree with the same interface (requires a callback to generate the right object)
@@ -111,8 +118,8 @@ namespace multidraw {
 
     double globalWeight_{1.};
     Evaluable globalReweight_{};
-    std::map<int, double> treeWeight_{};
-    std::map<int, Evaluable> treeReweight_{};
+    std::map<int, std::pair<double, bool>> treeWeight_{};
+    std::map<int, std::pair<Evaluable, bool>> treeReweight_{};
 
     int printLevel_{0};
     long totalEvents_{0};
