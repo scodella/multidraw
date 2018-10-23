@@ -5,6 +5,8 @@
 
 #include "TH1.h"
 
+#include <memory>
+
 namespace multidraw {
 
   //! A wrapper class for TH1
@@ -27,7 +29,7 @@ namespace multidraw {
       kMergeLast
     };
 
-    Plot1DFiller(TH1& hist, TTreeFormula& expr, TTreeFormula* reweight = nullptr, OverflowMode mode = kDefault);
+    Plot1DFiller(TH1& hist, std::shared_ptr<TTreeFormulaCached> const& expr, std::shared_ptr<TTreeFormulaCached> const& reweight = nullptr, OverflowMode mode = kDefault);
     Plot1DFiller(Plot1DFiller const&);
     ~Plot1DFiller() {}
 

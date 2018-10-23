@@ -6,6 +6,8 @@
 
 #include "TTree.h"
 
+#include <memory>
+
 namespace multidraw {
 
   //! A wrapper class for TTree
@@ -18,9 +20,9 @@ namespace multidraw {
    */
   class TreeFiller : public ExprFiller {
   public:
-    TreeFiller(TTree& tree, FormulaLibrary* library = nullptr, TTreeFormula* reweight = nullptr);
+    TreeFiller(TTree& tree, FormulaLibrary& library, std::shared_ptr<TTreeFormulaCached> const& reweight = nullptr);
     TreeFiller(TreeFiller const&);
-    ~TreeFiller();
+    ~TreeFiller() {}
 
     void addBranch(char const* bname, char const* expr);
 
@@ -33,8 +35,7 @@ namespace multidraw {
     void doFill_(unsigned) override;
 
     TTree& tree_;
-    FormulaLibrary* library_;
-    bool ownLibrary_;
+    FormulaLibrary& library_;
     std::vector<double> bvalues_{};
   };
 

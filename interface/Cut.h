@@ -6,8 +6,9 @@
 #include "TString.h"
 
 #include <vector>
+#include <memory>
 
-class TTreeFormula;
+class TTreeFormulaCached;
 
 namespace multidraw {
 
@@ -15,7 +16,7 @@ namespace multidraw {
 
   class Cut {
   public:
-    Cut(char const* name, TTreeFormula&);
+    Cut(char const* name, std::shared_ptr<TTreeFormulaCached> const&);
     Cut(char const* name, Evaluable::InstanceVal const&, Evaluable::NData const& = nullptr);
     ~Cut();
 
@@ -24,7 +25,7 @@ namespace multidraw {
     ExprFiller const* getFiller(unsigned i) { return fillers_.at(i); }
 
     void addFiller(ExprFiller& _filler) { fillers_.push_back(&_filler); }
-    void setFormula(TTreeFormula&);
+    void setFormula(std::shared_ptr<TTreeFormulaCached> const&);
     void setFormula(Evaluable::InstanceVal const&, Evaluable::NData const& = nullptr);
     void setPrintLevel(int);
     void resetCount();

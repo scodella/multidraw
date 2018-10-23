@@ -1,15 +1,14 @@
 #include "../interface/Plot1DFiller.h"
-
-#include "TTreeFormula.h"
+#include "../interface/TTreeFormulaCached.h"
 
 #include <iostream>
 
-multidraw::Plot1DFiller::Plot1DFiller(TH1& _hist, TTreeFormula& _expr, TTreeFormula* _reweight/* = nullptr*/, Plot1DFiller::OverflowMode _mode/* = kDefault*/) :
+multidraw::Plot1DFiller::Plot1DFiller(TH1& _hist, std::shared_ptr<TTreeFormulaCached> const& _expr, std::shared_ptr<TTreeFormulaCached> const& _reweight/* = nullptr*/, Plot1DFiller::OverflowMode _mode/* = kDefault*/) :
   ExprFiller(_reweight),
   hist_(_hist),
   overflowMode_(_mode)
 {
-  exprs_.push_back(&_expr);
+  exprs_.push_back(_expr);
 }
 
 multidraw::Plot1DFiller::Plot1DFiller(Plot1DFiller const& _orig) :

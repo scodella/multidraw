@@ -10,10 +10,6 @@ class TObjArray;
 
 //! Cached version of TTreeFormula.
 /*!
- * Buys little speedup though. The main reason for implementing this class is to have the
- * number of leaves exposed - TTreeFormula only provides GetLeaf(Int_t) which calls
- * fLeaves.UncheckedAt(), and at least in one instance it returned an invalid pointer.
- *
  * User of this class must first call ResetCache() and GetNdata() in the order to properly
  * access the instance value. Value of fNdataCache is returned for the second and subsequent
  * calls to GetNdata(). Instances are evaluated and cached at the first call of EvalInstance()
@@ -31,13 +27,9 @@ public:
   Double_t EvalInstance(Int_t, char const* [] = nullptr)/* override*/;
 
   void ResetCache() { fNdataCache = -1; }
-  TObjArray const* GetLeaves() const { return &fLeaves; }
-  void SetNRef(UInt_t n) { fNRef = n; }
-  UInt_t GetNRef() const { return fNRef; }
 
 private:
   Int_t fNdataCache{-1};
-  UInt_t fNRef{1};
   std::vector<std::pair<Bool_t, Double_t>> fCache{};
 
   ClassDef(TTreeFormulaCached, 1)

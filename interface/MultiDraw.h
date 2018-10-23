@@ -6,6 +6,7 @@
 #include "Plot1DFiller.h"
 #include "TreeFiller.h"
 #include "Cut.h"
+#include "Evaluable.h"
 #include "FormulaLibrary.h"
 
 #include "TChain.h"
@@ -13,6 +14,7 @@
 #include "TString.h"
 
 #include <vector>
+#include <memory>
 
 namespace multidraw {
 
@@ -53,8 +55,22 @@ namespace multidraw {
     void addCut(char const* name, char const* expr);
     //! Remove a cut.
     void removeCut(char const* name);
-    //! Apply a constant weight (e.g. luminosity times cross section) to all events.
-    void setConstantWeight(double l) { constWeight_ = l; }
+    //! Apply a constant weight (e.g. luminosity times cross section) to all events, possibly varying by input tree.
+    /*
+     * Tree number option is useful when e.g. running over multiple MC samples with different cross
+     * sections in one shot.
+     */
+    void setConstantWeight(double w, int treeNumber = -1);
+    //! Set a global reweight, possibly varying by input tree.
+    /*!
+     * Reweight factor can be set in two ways. If the second argument is nullptr,
+     * the value of expr in every event is used as the weight. If instead a TH1,
+     * TGraph, or TF1 is passed as the second argument, the value of expr is used
+     * to look up the y value of the source object, which is used as the weight.
+     * Tree number option is useful when e.g. running over multiple MC samples with different cross
+     * sections in one shot.
+     */
+    void setReweight(char const* expr, TObject const* source = nullptr, int treeNumber = -1);
     //! Set a prescale factor
     /*!
      * When prescale_ > 1, only events that satisfy eventNumber % prescale_ == 0 are read.
@@ -62,14 +78,6 @@ namespace multidraw {
      * tree entry number is used otherwise.
      */
     void setPrescale(unsigned p, char const* evtNumBranch = "");
-    //! Set a global reweight
-    /*!
-     * Reweight factor can be set in two ways. If the second argument is nullptr,
-     * the value of expr in every event is used as the weight. If instead a TH1,
-     * TGraph, or TF1 is passed as the second argument, the value of expr is used
-     * to look up the y value of the source object, which is used as the weight.
-     */
-    void setReweight(char const* expr, TObject const* source = nullptr);
     //! Add a 1D histogram to fill.
     Plot1DFiller& addPlot(TH1* hist, char const* expr, char const* cutName = "", char const* reweight = "", Plot1DFiller::OverflowMode mode = Plot1DFiller::kDefault);
     //! Add a tree to fill.
@@ -85,7 +93,7 @@ namespace multidraw {
 
   private:
     //! Handle addPlot and addTree with the same interface (requires a callback to generate the right object)
-    typedef std::function<ExprFiller*(TTreeFormula*)> ObjGen;
+    typedef std::function<ExprFiller*(std::shared_ptr<TTreeFormulaCached> const&)> ObjGen;
     ExprFiller& addObj_(TString const& cutName, char const* reweight, ObjGen const&);
     Cut& findCut_(TString const& cutName) const;
 
@@ -98,10 +106,10 @@ namespace multidraw {
     std::vector<Cut*> cuts_;
     FormulaLibrary library_;
 
-    double constWeight_{1.};
-
-    TTreeFormulaCached* reweightExpr_{nullptr};
-    std::function<void(std::vector<double>&)> reweight_;
+    double globalWeight_{1.};
+    Evaluable globalReweight_{};
+    std::map<int, double> treeWeight_{};
+    std::map<int, Evaluable> treeReweight_{};
 
     int printLevel_{0};
     long totalEvents_{0};

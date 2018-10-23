@@ -1,35 +1,41 @@
 #ifndef multidraw_Evaluable_h
 #define multidraw_Evaluable_h
 
-#include "TTreeFormula.h"
-
 #include <functional>
+#include <memory>
+
+class TTreeFormulaCached;
 
 namespace multidraw {
 
   class Evaluable {
   public:
-    typedef std::function<Double_t(UInt_t)> InstanceVal;
-    typedef std::function<UInt_t(void)> NData;
+    typedef std::function<double(unsigned)> InstanceVal;
+    typedef std::function<unsigned(void)> NData;
 
     Evaluable() {}
     Evaluable(InstanceVal const&, NData const& = nullptr);
-    Evaluable(TTreeFormula&);
+    Evaluable(std::shared_ptr<TTreeFormulaCached> const&);
     Evaluable(Evaluable const&);
     ~Evaluable() {}
     Evaluable& operator=(Evaluable const&);
 
     void set(InstanceVal const&, NData const& = nullptr);
-    void set(TTreeFormula&);
+    void set(std::shared_ptr<TTreeFormulaCached> const&);
+    void reset();
 
-    Bool_t singleValue() const { return singleValue_; }
-    UInt_t getNdata() const { return ndata_(); }
-    Double_t evalInstance(UInt_t i) const { return instanceVal_(i); }
+    bool isValid() const { return isFormula() || isFunction(); }
+    bool isFormula() const { return bool(formula_); }
+    bool isFunction() const { return bool(instanceVal_); }
+    bool singleValue() const;
+    unsigned getNdata();
+    double evalInstance(unsigned i);
 
   private:
     InstanceVal instanceVal_{};
     NData ndata_{};
-    Bool_t singleValue_{false};
+    std::shared_ptr<TTreeFormulaCached> formula_{};
+    bool singleValue_{false};
   };
 
 }

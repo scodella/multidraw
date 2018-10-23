@@ -4,9 +4,10 @@
 #include "TString.h"
 
 #include <vector>
+#include <memory>
 
 class TObject;
-class TTreeFormula;
+class TTreeFormulaCached;
 
 namespace multidraw {
 
@@ -17,14 +18,9 @@ namespace multidraw {
    */
   class ExprFiller {
   public:
-    ExprFiller(TTreeFormula* reweight = nullptr);
+    ExprFiller(std::shared_ptr<TTreeFormulaCached> const& reweight = nullptr);
     ExprFiller(ExprFiller const&);
     virtual ~ExprFiller() {}
-
-    unsigned getNdim() const { return exprs_.size(); }
-    TTreeFormula const* getExpr(unsigned iE = 0) const { return exprs_.at(iE); }
-    TTreeFormula* getExpr(unsigned iE = 0) { return exprs_.at(iE); }
-    TTreeFormula const* getReweight() const { return reweight_; }
 
     void fill(std::vector<double> const& eventWeights, std::vector<bool> const* = nullptr);
 
@@ -38,8 +34,8 @@ namespace multidraw {
   protected:
     virtual void doFill_(unsigned) = 0;
 
-    std::vector<TTreeFormula*> exprs_{};
-    TTreeFormula* reweight_{nullptr};
+    std::vector<std::shared_ptr<TTreeFormulaCached>> exprs_{};
+    std::shared_ptr<TTreeFormulaCached> reweight_{nullptr};
     double entryWeight_{1.};
     unsigned counter_{0};
 

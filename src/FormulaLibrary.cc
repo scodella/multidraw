@@ -8,18 +8,11 @@ multidraw::FormulaLibrary::FormulaLibrary(TTree& _tree) :
 {
 }
 
-multidraw::FormulaLibrary::~FormulaLibrary()
-{
-  for (auto& p : *this)
-    delete p.second;
-}
-
-TTreeFormulaCached*
+std::shared_ptr<TTreeFormulaCached> const&
 multidraw::FormulaLibrary::getFormula(char const* _expr)
 {
   auto fItr(this->find(_expr));
   if (fItr != this->end()) {
-    fItr->second->SetNRef(fItr->second->GetNRef() + 1);
     return fItr->second;
   }
 
@@ -31,27 +24,22 @@ multidraw::FormulaLibrary::getFormula(char const* _expr)
     throw std::invalid_argument(ss.str());
   }
 
-  this->emplace(_expr, formula);
+  fItr = this->emplace(TString(_expr), std::shared_ptr<TTreeFormulaCached>(formula)).first;
 
-  return formula;
+  return fItr->second;
 }
 
 void
-multidraw::FormulaLibrary::deleteFormula(TTreeFormulaCached*& _formula)
+multidraw::FormulaLibrary::prune()
 {
-  if (_formula == nullptr)
-    return;
+  auto fItr(this->begin());
+  while (fItr != this->end()) {
+    auto next(fItr);
+    ++next;
 
-  if (this->count(_formula->GetTitle()) == 0) {
-    std::stringstream ss;
-    ss << "Formula \"" << _formula->GetTitle() << "\" not found in library";
-    std::cerr << ss.str();
-    throw std::invalid_argument(ss.str());
-  }
+    if (fItr->second.use_count() == 1)
+      this->erase(fItr);
 
-  if (_formula->GetNRef() == 1) {
-    this->erase(_formula->GetTitle());
-    delete _formula;
-    _formula = nullptr;
+    fItr = next;
   }
 }

@@ -1,20 +1,13 @@
 #include "../interface/TreeFiller.h"
-
-#include "TTreeFormula.h"
+#include "../interface/TTreeFormulaCached.h"
 
 #include <iostream>
 
-multidraw::TreeFiller::TreeFiller(TTree& _tree, FormulaLibrary* _library/* = nullptr*/, TTreeFormula* _reweight/* = nullptr*/) :
+multidraw::TreeFiller::TreeFiller(TTree& _tree, FormulaLibrary& _library, std::shared_ptr<TTreeFormulaCached> const& _reweight/* = nullptr*/) :
   ExprFiller(_reweight),
   tree_(_tree),
-  library_(_library),
-  ownLibrary_(false)
+  library_(_library)
 {
-  if (library_ == nullptr) {
-    library_ = new FormulaLibrary(tree_);
-    ownLibrary_ = true;
-  }
-
   tree_.Branch("weight", &entryWeight_, "weight/D");
 
   bvalues_.reserve(NBRANCHMAX);
@@ -23,15 +16,9 @@ multidraw::TreeFiller::TreeFiller(TTree& _tree, FormulaLibrary* _library/* = nul
 multidraw::TreeFiller::TreeFiller(TreeFiller const& _orig) :
   ExprFiller(_orig),
   tree_(_orig.tree_),
-  library_(nullptr),
-  ownLibrary_(_orig.ownLibrary_),
+  library_(_orig.library_),
   bvalues_(_orig.bvalues_)
 {
-  if (ownLibrary_)
-    library_ = new FormulaLibrary(tree_);
-  else
-    library_ = _orig.library_;
-
   tree_.SetBranchAddress("weight", &entryWeight_);
 
   bvalues_.reserve(NBRANCHMAX);
@@ -40,12 +27,6 @@ multidraw::TreeFiller::TreeFiller(TreeFiller const& _orig) :
   auto* branches(tree_.GetListOfBranches());
   for (int iB(0); iB != branches->GetEntries(); ++iB)
     tree_.SetBranchAddress(branches->At(iB)->GetName(), &bvalues_[iB]);
-}
-
-multidraw::TreeFiller::~TreeFiller()
-{
-  if (ownLibrary_)
-    delete library_;
 }
 
 void
@@ -57,7 +38,7 @@ multidraw::TreeFiller::addBranch(char const* _bname, char const* _expr)
   bvalues_.resize(bvalues_.size() + 1);
   tree_.Branch(_bname, &bvalues_.back(), TString::Format("%s/D", _bname));
 
-  exprs_.push_back(library_->getFormula(_expr));
+  exprs_.push_back(library_.getFormula(_expr));
 }
 
 void

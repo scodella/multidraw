@@ -24,7 +24,7 @@ multidraw::MultiDraw::MultiDraw(char const* _treeName/* = "events"*/) :
   tree_(_treeName),
   library_(tree_)
 {
-  cuts_.push_back(new Cut("", [](UInt_t)->Double_t { return 1.; }));
+  cuts_.push_back(new Cut("", [](unsigned)->double { return 1.; }));
 }
 
 multidraw::MultiDraw::~MultiDraw()
@@ -36,7 +36,7 @@ multidraw::MultiDraw::~MultiDraw()
 void
 multidraw::MultiDraw::setFilter(char const* _expr)
 {
-  findCut_("").setFormula(*library_.getFormula(_expr));
+  findCut_("").setFormula(library_.getFormula(_expr));
 }
 
 void
@@ -51,7 +51,7 @@ multidraw::MultiDraw::addCut(char const* _name, char const* _expr)
     throw std::invalid_argument(ss.str());
   }
 
-  cuts_.push_back(new Cut(_name, *library_.getFormula(_expr)));
+  cuts_.push_back(new Cut(_name, library_.getFormula(_expr)));
 }
 
 void
@@ -74,45 +74,48 @@ multidraw::MultiDraw::removeCut(char const* _name)
 }
 
 void
-multidraw::MultiDraw::setPrescale(unsigned _p, char const* _evtNumBranch/* = ""*/)
+multidraw::MultiDraw::setConstantWeight(double _w, int _treeNumber/* = -1*/)
 {
-  if (_p == 0)
-    throw std::invalid_argument("Prescale of 0 not allowed");
-  prescale_ = _p;
-  evtNumBranchName_ = _evtNumBranch;
+  if (_treeNumber >= 0)
+    treeWeight_[_treeNumber] = _w;
+  else
+    globalWeight_ = _w;
 }
 
 void
-multidraw::MultiDraw::setReweight(char const* _expr, TObject const* _source/* = nullptr*/)
+multidraw::MultiDraw::setReweight(char const* _expr, TObject const* _source/* = nullptr*/, int _treeNumber/* = -1*/)
 {
-  library_.deleteFormula(reweightExpr_);
-  reweight_ = nullptr;
+  Evaluable& reweight(_treeNumber >= 0 ? treeReweight_[_treeNumber] : globalReweight_);
+
+  reweight.reset();
 
   if (!_expr || std::strlen(_expr) == 0)
     return;
 
-  reweightExpr_ = library_.getFormula(_expr);
+  auto& formula(library_.getFormula(_expr));
 
-  if (_source != nullptr) {
+  if (_source == nullptr) {
+    // Expression is directly the reweight factor
+    reweight.set(formula);
+  }
+  else {
+    // Otherwise we evaluate the value of the formula over the source
+
+    Evaluable::InstanceVal instanceVal;
+
     if (_source->InheritsFrom(TH1::Class())) {
       auto* source(static_cast<TH1 const*>(_source));
 
-      reweight_ = [this, source](std::vector<double>& _values) {
-        _values.clear();
+      instanceVal = [&formula, source](unsigned iD)->double {
+        double x(formula->EvalInstance(iD));
 
-        unsigned nD(this->reweightExpr_->GetNdata());
+        int iX(source->FindFixBin(x));
+        if (iX == 0)
+          iX = 1;
+        else if (iX > source->GetNbinsX())
+          iX = source->GetNbinsX();
 
-        for (unsigned iD(0); iD != nD; ++iD) {
-          double x(this->reweightExpr_->EvalInstance(iD));
-
-          int iX(source->FindFixBin(x));
-          if (iX == 0)
-            iX = 1;
-          else if (iX > source->GetNbinsX())
-            iX = source->GetNbinsX();
-
-          _values.push_back(source->GetBinContent(iX));
-        }
+        return source->GetBinContent(iX);
       };
     }
     else if (_source->InheritsFrom(TGraph::Class())) {
@@ -125,70 +128,61 @@ multidraw::MultiDraw::setReweight(char const* _expr, TObject const* _source/* = 
           throw std::runtime_error("Reweight TGraph source must have xvalues in increasing order");
       }
 
-      reweight_ = [this, source](std::vector<double>& _values) {
-        _values.clear();
+      instanceVal = [&formula, source](unsigned iD)->double {
+        double x(formula->EvalInstance(iD));
 
-        unsigned nD(this->reweightExpr_->GetNdata());
+        int n(source->GetN());
+        double* xvals(source->GetX());
 
-        for (unsigned iD(0); iD != nD; ++iD) {
-          double x(this->reweightExpr_->EvalInstance(iD));
+        double* b(std::upper_bound(xvals, xvals + n, x));
+        if (b == xvals + n)
+          return source->GetY()[n - 1];
+        else if (b == xvals)
+          return source->GetY()[0];
+        else {
+          // interpolate
+          int low(b - xvals - 1);
+          double dlow(x - xvals[low]);
+          double dhigh(xvals[low + 1] - x);
 
-          int n(source->GetN());
-          double* xvals(source->GetX());
-
-          double* b(std::upper_bound(xvals, xvals + n, x));
-          if (b == xvals + n)
-            _values.push_back(source->GetY()[n - 1]);
-          else if (b == xvals)
-            _values.push_back(source->GetY()[0]);
-          else {
-            // interpolate
-            int low(b - xvals - 1);
-            double dlow(x - xvals[low]);
-            double dhigh(xvals[low + 1] - x);
-
-            _values.push_back((source->GetY()[low] * dhigh + source->GetY()[low + 1] * dlow) / (xvals[low + 1] - xvals[low]));
-          }
+          return (source->GetY()[low] * dhigh + source->GetY()[low + 1] * dlow) / (xvals[low + 1] - xvals[low]);
         }
       };
     }
     else if (_source->InheritsFrom(TF1::Class())) {
       auto* source(static_cast<TF1 const*>(_source));
 
-      reweight_ = [this, source](std::vector<double>& _values) {
-        _values.clear();
-
-        unsigned nD(this->reweightExpr_->GetNdata());
-
-        for (unsigned iD(0); iD != nD; ++iD) {
-          double x(this->reweightExpr_->EvalInstance(iD));
-
-          _values.push_back(source->Eval(x));
-        }
+      instanceVal = [&formula, source](unsigned iD)->double {
+        return source->Eval(formula->EvalInstance(iD));
       };
     }
     else
       throw std::runtime_error("Incompatible object passed as reweight source");
-  }
-  else {
-    reweight_ = [this](std::vector<double>& _values) {
-      _values.clear();
 
-      unsigned nD(this->reweightExpr_->GetNdata());
+    Evaluable::NData ndata{nullptr};
+    if (formula->GetMultiplicity() != 0)
+      ndata = [&formula]()->unsigned { return formula->GetNdata(); };
 
-      for (unsigned iD(0); iD != nD; ++iD)
-        _values.push_back(this->reweightExpr_->EvalInstance(iD));
-    };
+    reweight.set(instanceVal, ndata);
   }
+}
+
+void
+multidraw::MultiDraw::setPrescale(unsigned _p, char const* _evtNumBranch/* = ""*/)
+{
+  if (_p == 0)
+    throw std::invalid_argument("Prescale of 0 not allowed");
+  prescale_ = _p;
+  evtNumBranchName_ = _evtNumBranch;
 }
 
 multidraw::Plot1DFiller&
 multidraw::MultiDraw::addPlot(TH1* _hist, char const* _expr, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/, Plot1DFiller::OverflowMode _overflowMode/* = kDefault*/)
 {
-  TTreeFormulaCached* exprFormula(library_.getFormula(_expr));
+  std::shared_ptr<TTreeFormulaCached> exprFormula(library_.getFormula(_expr));
 
-  auto newPlot1D([_hist, _overflowMode, exprFormula](TTreeFormula* _reweightFormula)->ExprFiller* {
-      return new Plot1DFiller(*_hist, *exprFormula, _reweightFormula, _overflowMode);
+  auto newPlot1D([_hist, _overflowMode, &exprFormula](std::shared_ptr<TTreeFormulaCached> const& _reweightFormula)->ExprFiller* {
+      return new Plot1DFiller(*_hist, exprFormula, _reweightFormula, _overflowMode);
     });
 
   if (printLevel_ > 1) {
@@ -205,8 +199,8 @@ multidraw::MultiDraw::addPlot(TH1* _hist, char const* _expr, char const* _cutNam
 multidraw::TreeFiller&
 multidraw::MultiDraw::addTree(TTree* _tree, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/)
 {
-  auto newTree([this, _tree](TTreeFormula* _reweightFormula)->ExprFiller* {
-      return new TreeFiller(*_tree, &this->library_, _reweightFormula);
+  auto newTree([this, _tree](std::shared_ptr<TTreeFormulaCached> const& _reweightFormula)->ExprFiller* {
+      return new TreeFiller(*_tree, this->library_, _reweightFormula);
     });
 
   if (printLevel_ > 1) {
@@ -225,7 +219,7 @@ multidraw::MultiDraw::addObj_(TString const& _cutName, char const* _reweight, Ob
 {
   auto& cut(findCut_(_cutName));
 
-  TTreeFormulaCached* reweightFormula(nullptr);
+  std::shared_ptr<TTreeFormulaCached> reweightFormula(nullptr);
   if (_reweight != nullptr && std::strlen(_reweight) != 0)
     reweightFormula = library_.getFormula(_reweight);
 
@@ -275,6 +269,9 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
     cuts.push_back(cut);
   }
 
+  // Also delete unused formulas
+  library_.prune();
+
   std::vector<double> eventWeights;
 
   long long iEntry(_firstEntry);
@@ -300,6 +297,9 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
 
   TBranch* weightBranch(nullptr);
   TBranch* evtNumBranch(nullptr);
+
+  double treeWeight(1.);
+  Evaluable* treeReweight{nullptr};
   
   while (iEntry != iEntryMax) {
     long long iLocalEntry(tree_.LoadTree(iEntry++));
@@ -370,6 +370,22 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
 
       for (auto& ff : library_)
         ff.second->UpdateFormulaLeaves();
+
+      auto wItr(treeWeight_.find(treeNumber));
+      if (wItr == treeWeight_.end())
+        treeWeight = globalWeight_;
+      else
+        treeWeight = wItr->second;        
+
+      auto rItr(treeReweight_.find(treeNumber));
+      if (rItr == treeReweight_.end()) {
+        if (globalReweight_.isValid())
+          treeReweight = &globalReweight_;
+        else
+          treeReweight = nullptr;
+      }
+      else
+        treeReweight = &rItr->second;
     }
 
     if (prescale_ > 1) {
@@ -385,7 +401,7 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
 
     // Reset formula cache
     for (auto& ff : library_)
-      ff.second->ResetCache();
+      ff.second.get()->ResetCache();
 
     // First cut (name "") is a global filter
     if (!cuts[0]->evaluate())
@@ -398,15 +414,17 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
         std::cout << "        Input weight " << getWeight() << std::endl;
     }
 
-    double commonWeight(getWeight() * constWeight_);
+    double commonWeight(getWeight() * treeWeight);
 
-    if (reweight_) {
-      reweight_(eventWeights);
-      if (eventWeights.empty())
-        continue;
+    if (treeReweight != nullptr) {
+      unsigned nD(treeReweight->getNdata());
+      if (nD == 0)
+        continue; // skip event
 
-      for (double& w : eventWeights)
-        w *= commonWeight;
+      eventWeights.resize(nD);
+
+      for (unsigned iD(0); iD != nD; ++iD)
+        eventWeights[iD] = treeReweight->evalInstance(iD) * commonWeight;
     }
     else
       eventWeights.assign(1, commonWeight);
