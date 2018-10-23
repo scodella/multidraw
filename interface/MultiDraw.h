@@ -47,6 +47,8 @@ namespace multidraw {
 
     //! Add an input file.
     void addInputPath(char const* path) { tree_.Add(path); }
+    //! Add a friend tree (not tested)
+    void addFriend(char const* treeName, TObjArray const* paths);
     //! Set the name and the C variable type of the weight branch. Pass an empty string to unset.
     void setWeightBranch(char const* bname) { weightBranchName_ = bname; }
     //! Set a global filtering cut. Events not passing this expression are not considered at all.
@@ -98,6 +100,7 @@ namespace multidraw {
     Cut& findCut_(TString const& cutName) const;
 
     TChain tree_;
+    std::vector<TChain*> friendTrees_{};
     TString weightBranchName_{"weight"};
     TString evtNumBranchName_{""};
 

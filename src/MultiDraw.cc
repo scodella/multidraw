@@ -31,6 +31,23 @@ multidraw::MultiDraw::~MultiDraw()
 {
   for (auto* cut : cuts_)
     delete cut;
+
+  for (auto* chain : friendTrees_) {
+    tree_.RemoveFriend(chain);
+    delete chain;
+  }
+}
+
+void
+multidraw::MultiDraw::addFriend(char const* _treeName, TObjArray const* _paths)
+{
+  auto* chain(new TChain(_treeName));
+  for (auto* path : *_paths)
+    chain->Add(path->GetName());
+
+  friendTrees_.push_back(chain);
+
+  tree_.AddFriend(chain);
 }
 
 void
