@@ -70,6 +70,9 @@ multidraw::MultiDraw::setFilter(char const* _expr)
 void
 multidraw::MultiDraw::addCut(char const* _name, char const* _expr)
 {
+  if (_name == nullptr || std::strlen(_name) == 0)
+    throw std::invalid_argument("Cannot add a cut with no name");
+
   auto cutItr(std::find_if(cuts_.begin(), cuts_.end(), [_name](Cut* const& _cut)->bool { return _cut->getName() == _name; }));
 
   if (cutItr != cuts_.end()) {
@@ -285,6 +288,9 @@ multidraw::MultiDraw::addObj_(TString const& _cutName, char const* _reweight, Ob
 multidraw::Cut&
 multidraw::MultiDraw::findCut_(TString const& _cutName) const
 {
+  if (_cutName.Length() == 0)
+    return *cuts_[0];
+
   auto cutItr(std::find_if(cuts_.begin(), cuts_.end(), [&_cutName](Cut* const& _cut)->bool { return _cut->getName() == _cutName; }));
 
   if (cutItr == cuts_.end()) {
@@ -320,8 +326,9 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
   // Select only the cuts with at least one filler
   std::vector<Cut*> cuts;
 
-  for (auto* cut : cuts_) {
-    if (cut->getName().Length() != 0 && cut->getNFillers() == 0)
+  for (unsigned iC(0); iC != cuts_.size(); ++iC) {
+    auto* cut(cuts_[iC]);
+    if (iC != 0 && cut->getNFillers() == 0)
       continue;
     
     cut->setPrintLevel(printLevel_);
