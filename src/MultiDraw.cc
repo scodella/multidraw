@@ -15,6 +15,8 @@
 #include <iostream>
 #include <sstream>
 #include <algorithm>
+#include <chrono>
+#include <numeric>
 
 multidraw::MultiDraw::MultiDraw(char const* _treeName/* = "events"*/) :
   tree_(_treeName),
@@ -295,16 +297,25 @@ multidraw::MultiDraw::findCut_(TString const& _cutName) const
   return **cutItr;
 }
 
+typedef std::chrono::steady_clock SteadyClock;
+
+double millisec(SteadyClock::duration const& interval)
+{
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(interval).count() * 1.e-6;
+}
+
 void
 multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
 {
   long printEvery(10000);
-  if (printLevel_ == 2)
-    printEvery = 10000;
-  else if (printLevel_ == 3)
+  if (printLevel_ == 3)
     printEvery = 100;
   else if (printLevel_ >= 4)
     printEvery = 1;
+
+  std::vector<SteadyClock::duration> cutTimers;
+  SteadyClock::duration ioTimer(SteadyClock::duration::zero());
+  SteadyClock::duration eventTimer(SteadyClock::duration::zero());
 
   // Select only the cuts with at least one filler
   std::vector<Cut*> cuts;
@@ -317,6 +328,9 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
     cut->resetCount();
 
     cuts.push_back(cut);
+
+    if (doTimeProfile_)
+      cutTimers.emplace_back(SteadyClock::duration::zero());
   }
 
   // Also delete unused formulas
@@ -352,8 +366,13 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
   double treeWeight(1.);
   Evaluable* treeReweight{nullptr};
   bool exclusiveTreeReweight(false);
+
+  SteadyClock::time_point start;
   
   while (iEntry != iEntryMax) {
+    if (doTimeProfile_)
+      start = SteadyClock::now();
+
     // iEntryNumber != iEntry if tree has a TEntryList set
     long long iEntryNumber(tree_.GetEntryNumber(iEntry++));
     if (iEntryNumber < 0)
@@ -466,8 +485,20 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
     for (auto& ff : library_)
       ff.second.get()->ResetCache();
 
+    if (doTimeProfile_) {
+      ioTimer += SteadyClock::now() - start;
+      start = SteadyClock::now();
+    }
+
     // First cut (name "") is a global filter
-    if (!cuts[0]->evaluate())
+    bool passFilter(cuts[0]->evaluate());
+
+    if (doTimeProfile_) {
+      cutTimers[0] += SteadyClock::now() - start;
+      start = SteadyClock::now();
+    }
+
+    if (!passFilter)
       continue;
 
     if (weightBranch != nullptr) {
@@ -475,6 +506,11 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
 
       if (printLevel_ > 3)
         std::cout << "        Input weight " << getWeight() << std::endl;
+    }
+
+    if (doTimeProfile_) {
+      ioTimer += SteadyClock::now() - start;
+      start = SteadyClock::now();
     }
 
     double commonWeight(getWeight() * treeWeight);
@@ -507,23 +543,58 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
       std::cout << std::endl;
     }
 
+    if (doTimeProfile_) {
+      eventTimer += SteadyClock::now() - start;
+      start = SteadyClock::now();
+    }
+
     cuts[0]->fillExprs(eventWeights);
+
+    if (doTimeProfile_) {
+      cutTimers[0] += SteadyClock::now() - start;
+      start = SteadyClock::now();
+    }
+
     for (unsigned iC(1); iC != cuts.size(); ++iC) {
       if (cuts[iC]->evaluate())
         cuts[iC]->fillExprs(eventWeights);
+
+      if (doTimeProfile_) {
+        cutTimers[iC] += SteadyClock::now() - start;
+        start = SteadyClock::now();
+      }
     }
   }
 
   totalEvents_ = iEntry;
 
   if (printLevel_ >= 0) {
-    std::cout << "\r      " << iEntry << " events";
-    std::cout << std::endl;
+    std::cout << "\r      " << iEntry << " events" << std::endl;
+    if (doTimeProfile_) {
+      double totalTime(millisec(ioTimer) + millisec(eventTimer));
+      totalTime += millisec(std::accumulate(cutTimers.begin(), cutTimers.end(), SteadyClock::duration::zero()));
+      std::cout << " Execution time: " << (totalTime / totalEvents_) << " ms/evt" << std::endl;
+    }
   }
 
   if (printLevel_ > 0) {
-    for (auto* cut : cuts) {
+    if (doTimeProfile_) {
+      std::cout << "        Time spent on tree input: " << (millisec(ioTimer) / totalEvents_) << " ms/evt" << std::endl;
+      std::cout << "        Time spent on event reweighting: " << (millisec(eventTimer) / totalEvents_) << " ms/evt" << std::endl;
+    }
+
+    for (unsigned iC(0); iC != cuts.size(); ++iC) {
+      auto* cut(cuts[iC]);
       std::cout << "        Cut " << cut->getName() << ": passed total " << cut->getCount() << std::endl;
+      if (doTimeProfile_) {
+        double cutTime(0.);
+        if (iC == 0)
+          cutTime = millisec(cutTimers[0]) / totalEvents_;
+        else
+          cutTime = millisec(cutTimers[iC]) / cuts[0]->getCount();
+        std::cout << "        time: " << cutTime << " ms/evt" << std::endl;
+      }
+
       for (unsigned iF(0); iF != cut->getNFillers(); ++iF) {
         auto* filler(cut->getFiller(iF));
         std::cout << "          " << filler->getObj().GetName() << ": " << filler->getCount() << std::endl;

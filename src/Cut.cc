@@ -21,6 +21,15 @@ multidraw::Cut::~Cut()
     delete filler;
 }
 
+TString
+multidraw::Cut::getName() const
+{
+  if (name_.Length() == 0)
+    return "[Event filter]";
+  else
+    return name_;
+}
+
 void
 multidraw::Cut::setFormula(TTreeFormulaCachedPtr const& _formula)
 {
@@ -68,7 +77,7 @@ multidraw::Cut::evaluate()
     instanceMask_->assign(nD, false);
 
   if (printLevel_ > 2)
-    std::cout << "        " << name_ << " has " << nD << " iterations" << std::endl;
+    std::cout << "        " << getName() << " has " << nD << " iterations" << std::endl;
 
   bool any(false);
 
@@ -79,7 +88,7 @@ multidraw::Cut::evaluate()
     any = true;
 
     if (printLevel_ > 2)
-        std::cout << "        " << name_ << " iteration " << iD << " pass" << std::endl;
+      std::cout << "        " << getName() << " iteration " << iD << " pass" << std::endl;
 
     if (!cut_.singleValue())
       (*instanceMask_)[iD] = true;

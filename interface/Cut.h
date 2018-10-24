@@ -18,7 +18,7 @@ namespace multidraw {
     Cut(char const* name, Evaluable::InstanceVal const&, Evaluable::NData const& = nullptr);
     ~Cut();
 
-    TString const& getName() const { return name_; }
+    TString getName() const;
     unsigned getNFillers() const { return fillers_.size(); }
     ExprFiller const* getFiller(unsigned i) { return fillers_.at(i); }
 

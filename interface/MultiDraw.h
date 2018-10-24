@@ -97,7 +97,18 @@ namespace multidraw {
     //! Run and fill the plots and trees.
     void execute(long nEntries = -1, long firstEntry = 0);
 
+    //! Set the print level.
+    /*
+     * Level -1: silent
+     * Level  0: print number of events every 10000
+     * Level  1: additionally print the summary of execution
+     * Level  2: display info about each added plot/tree and each new file
+     * Level  3: print every 100 events
+     * Level  4: debug print out
+     */
     void setPrintLevel(int l) { printLevel_ = l; }
+    void setDoTimeProfile(bool d) { doTimeProfile_ = d; }
+
     long getTotalEvents() const { return totalEvents_; }
 
     unsigned numObjs() const;
@@ -126,6 +137,8 @@ namespace multidraw {
     std::map<int, std::pair<Evaluable, bool>> treeReweight_{};
 
     int printLevel_{0};
+    bool doTimeProfile_{0};
+
     long totalEvents_{0};
   };
 
