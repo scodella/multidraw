@@ -9,6 +9,7 @@
 #include "TLeafD.h"
 #include "TLeafI.h"
 #include "TLeafL.h"
+#include "TEntryList.h"
 
 #include <stdexcept>
 #include <cstring>
@@ -327,8 +328,16 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
 
     // This step also fills the offsets array of the TChain
     long long nTotal(tree_.GetEntries() - _firstEntry);
+
+    auto* elist(tree_.GetEntryList());
+    if (elist != nullptr)
+      nTotal = elist->GetN() - _firstEntry;
+
     if (_nEntries >= 0 && _nEntries < nTotal)
       nTotal = _nEntries;
+
+    if (nTotal <= _firstEntry)
+      return;
 
     long long nPerJob(nTotal / inputMultiplexing_);
 
@@ -344,16 +353,40 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
       auto* tree(new TChain(tree_.GetName()));
 
       unsigned treeNumberOffset(0);
-      while (firstEntry >= tree_.GetTreeOffset()[treeNumberOffset + 1])
-        ++treeNumberOffset;
+      long threadFirstEntry(0);
+      TEntryList* threadElist{nullptr};
+
+      if (elist == nullptr) {
+        while (firstEntry >= tree_.GetTreeOffset()[treeNumberOffset + 1])
+          ++treeNumberOffset;
+
+        threadFirstEntry = firstEntry - tree_.GetTreeOffset()[treeNumberOffset];
+      }
+      else {
+        long long n(0);
+        for (auto* obj : *elist->GetLists()) {
+          auto* el(static_cast<TEntryList*>(obj));
+          if (firstEntry < n + el->GetN())
+            break;
+          ++treeNumberOffset;
+          n += el->GetN();
+        }
+
+        threadFirstEntry = firstEntry - n;
+
+        threadElist = new TEntryList(tree);
+      }
 
       auto* fileElements(tree_.GetListOfFiles());
-      for (unsigned iS(treeNumberOffset); iS != fileElements->GetEntries(); ++iS)
-        tree->Add(fileElements->At(iS)->GetTitle());
+      for (unsigned iS(treeNumberOffset); iS != fileElements->GetEntries(); ++iS) {
+        TString fileName(fileElements->At(iS)->GetTitle());
+        tree->Add(fileName);
+        if (threadElist != nullptr)
+          threadElist->Add(elist->GetEntryList(tree_.GetName(), fileName));
+      }
 
-      long threadFirstEntry(firstEntry - tree_.GetTreeOffset()[treeNumberOffset]);
-
-      // TODO take care of entry list
+      if (threadElist != nullptr)
+        tree->SetEntryList(threadElist);
 
       threads.push_back(new std::thread(threadTask, threadFirstEntry, treeNumberOffset, tree));
       trees.push_back(tree);
@@ -374,6 +407,9 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
     for (unsigned iT(0); iT != inputMultiplexing_ - 1; ++iT) {
       threads[iT]->join();
       delete threads[iT];
+      auto* threadElist(trees[iT]->GetEntryList());
+      trees[iT]->SetEntryList(nullptr);
+      delete threadElist;
       delete trees[iT];
     }
 
@@ -514,9 +550,9 @@ multidraw::MultiDraw::executeOne_(long _nEntries, long _firstEntry, unsigned _tr
   Evaluable* treeReweight{nullptr};
   bool exclusiveTreeReweight(false);
 
-  long printEvery(10000);
+  long printEvery(100000);
   if (printLevel_ == 3)
-    printEvery = 100;
+    printEvery = 1000;
   else if (printLevel_ >= 4)
     printEvery = 1;
   
