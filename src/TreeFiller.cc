@@ -77,12 +77,12 @@ multidraw::TreeFiller::threadClone(FormulaLibrary& _library) const
 }
 
 void
-multidraw::TreeFiller::threadMerge(TObject& _main)
+multidraw::TreeFiller::threadMerge(ExprFiller& _other)
 {
-  TTree& mainTree(static_cast<TTree&>(_main));
+  auto* tree(static_cast<TTree*>(&_other.getObj()));
   TObjArray arr;
-  arr.Add(&tree_);
-  mainTree.Merge(&arr);
+  arr.Add(tree);
+  tree_.Merge(&arr);
 }
 
 void

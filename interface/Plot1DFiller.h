@@ -36,7 +36,7 @@ namespace multidraw {
     TH1 const& getHist() const { return hist_; }
 
     ExprFiller* threadClone(FormulaLibrary&) const override;
-    void threadMerge(TObject&) override;
+    void threadMerge(ExprFiller&) override;
 
   private:
     void doFill_(unsigned) override;

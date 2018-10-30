@@ -30,7 +30,7 @@ namespace multidraw {
     TTree const& getTree() const { return tree_; }
 
     ExprFiller* threadClone(FormulaLibrary&) const override;
-    void threadMerge(TObject&) override;
+    void threadMerge(ExprFiller&) override;
 
     static unsigned const NBRANCHMAX = 128;
 

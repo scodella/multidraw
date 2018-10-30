@@ -33,7 +33,7 @@ namespace multidraw {
     void setPrintLevel(int l) { printLevel_ = l; }
 
     virtual ExprFiller* threadClone(FormulaLibrary&) const = 0;
-    virtual void threadMerge(TObject&) = 0;
+    virtual void threadMerge(ExprFiller&) = 0;
 
   protected:
     virtual void doFill_(unsigned) = 0;

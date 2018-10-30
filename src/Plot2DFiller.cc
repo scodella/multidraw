@@ -48,10 +48,10 @@ multidraw::Plot2DFiller::threadClone(FormulaLibrary& _library) const
 }
 
 void
-multidraw::Plot2DFiller::threadMerge(TObject& _main)
+multidraw::Plot2DFiller::threadMerge(ExprFiller& _other)
 {
-  TH2& mainHist(static_cast<TH2&>(_main));
-  mainHist.Add(&hist_);
+  auto* hist(static_cast<TH2 const*>(&_other.getObj()));
+  hist_.Add(hist);
 }
 
 void

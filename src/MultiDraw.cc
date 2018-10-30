@@ -350,6 +350,8 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
       for (unsigned iS(treeNumberOffset); iS != fileElements->GetEntries(); ++iS)
         tree->Add(fileElements->At(iS)->GetTitle());
 
+      // TODO take care of entry list
+
       threads.push_back(new std::thread(threadTask, firstEntry, treeNumberOffset, std::ref(*tree)));
       trees.push_back(tree);
 
@@ -734,7 +736,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, long _firstEntry, unsigned _tr
         auto* filler(cut->getFiller(iF));
         auto* origFiller(origCut.getFiller(iF));
 
-        filler->threadMerge(origFiller->getObj());
+        origFiller->threadMerge(*filler);
       }
 
       delete cut;
