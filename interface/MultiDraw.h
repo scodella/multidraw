@@ -18,6 +18,7 @@
 
 #include <vector>
 #include <mutex>
+#include <condition_variable>
 
 namespace multidraw {
 
@@ -135,7 +136,7 @@ namespace multidraw {
     ExprFiller& addObj_(TString const& cutName, char const* reweight, ObjGen const&);
     Cut& findCut_(TString const& cutName) const;
 
-    long executeOne_(long nEntries, long firstEntry, unsigned treeNumberOffset, TTree&, std::mutex* = nullptr);
+    long executeOne_(long nEntries, long firstEntry, unsigned treeNumberOffset, TTree&, std::mutex* = nullptr, std::condition_variable* = nullptr, std::atomic_bool* = nullptr);
 
     TChain tree_;
     std::vector<TChain*> friendTrees_{};
@@ -156,7 +157,7 @@ namespace multidraw {
     int printLevel_{0};
     bool doTimeProfile_{0};
 
-    long totalEvents_{0};
+    long long totalEvents_{0};
   };
 
 }

@@ -17,8 +17,8 @@
 #include <algorithm>
 #include <chrono>
 #include <numeric>
-#include <mutex>
 #include <thread>
+#include <atomic>
 
 multidraw::MultiDraw::MultiDraw(char const* _treeName/* = "events"*/) :
   tree_(_treeName),
@@ -317,6 +317,8 @@ multidraw::MultiDraw::numObjs() const
 void
 multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
 {
+  totalEvents_ = 0;
+
   if (inputMultiplexing_ > 1) {
     if (treeReweight_.size() != 0 || globalReweight_.isValid())
       throw std::runtime_error("Cannot multiplex input when tree reweights are set.");
@@ -329,17 +331,20 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
     long long nPerJob(nTotal / inputMultiplexing_);
 
     std::mutex mutex;
+    std::condition_variable condition;
+    std::atomic_ullong totalEvents{0};
+    std::atomic_bool initDone(false);
 
-    auto threadTask([this, nPerJob, &mutex](long _firstEntry, unsigned _treeNumberOffset, TTree& _tree) {
-        long nProcessed(this->executeOne_(nPerJob, _firstEntry, _treeNumberOffset, _tree, &mutex));
-        std::lock_guard<std::mutex> lock(mutex);
-        totalEvents_ += nProcessed;
+    auto threadTask([this, nPerJob, &totalEvents, &mutex, &condition, &initDone](long _fE, unsigned _treeNumberOffset, TTree* _tree) {
+        long nProcessed(this->executeOne_(nPerJob, _fE, _treeNumberOffset, *_tree, &mutex, &condition, &initDone));
+        totalEvents += nProcessed;
       });
 
     std::vector<TChain*> trees;
     std::vector<std::thread*> threads;
-    long firstEntry(0);
-    for (unsigned iT(0); iT != inputMultiplexing_ - 1; ++iT) {
+    long firstEntry(_firstEntry);
+    unsigned iT(0);
+    for (; iT != inputMultiplexing_ - 1; ++iT) {
       auto* tree(new TChain(tree_.GetName()));
 
       unsigned treeNumberOffset(0);
@@ -352,28 +357,52 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
 
       // TODO take care of entry list
 
-      threads.push_back(new std::thread(threadTask, firstEntry, treeNumberOffset, std::ref(*tree)));
+      threads.push_back(new std::thread(threadTask, firstEntry, treeNumberOffset, tree));
       trees.push_back(tree);
 
+      std::unique_lock<std::mutex> lock(mutex);
+      condition.wait(lock, [&initDone]() { return bool(initDone); });
+
+      initDone = false;
+
       firstEntry += nPerJob;
+
+      if (_nEntries >= 0 && firstEntry - _firstEntry >= _nEntries)
+        break;
     }
 
-    unsigned treeNumberOffset(0);
-    while (firstEntry >= tree_.GetTreeOffset()[treeNumberOffset + 1])
-      ++treeNumberOffset;
+    if (iT == inputMultiplexing_ - 1) {
+      unsigned treeNumberOffset(0);
+      while (firstEntry >= tree_.GetTreeOffset()[treeNumberOffset + 1])
+        ++treeNumberOffset;
 
-    long nProcessed(executeOne_(-1, firstEntry, treeNumberOffset, tree_, &mutex));
+      long nE(-1);
+      if (_nEntries >= 0)
+        nE = _nEntries - (firstEntry - _firstEntry);
 
-    for (unsigned iT(0); iT != inputMultiplexing_ - 1; ++iT) {
+      long nProcessed(executeOne_(nE, firstEntry, treeNumberOffset, tree_));
+
+      totalEvents_ = nProcessed;
+
+      initDone = true;
+      condition.notify_all();
+    }
+
+    for (iT = 0; iT != threads.size(); ++iT) {
       threads[iT]->join();
       delete threads[iT];
       delete trees[iT];
     }
-    
-    totalEvents_ += nProcessed;
+
+    totalEvents_ += totalEvents;
   }
-  else
-    totalEvents_ = executeOne_(_nEntries, _firstEntry, 0, tree_);
+  else {
+    unsigned treeNumberOffset(0);
+    while (_firstEntry >= tree_.GetTreeOffset()[treeNumberOffset + 1])
+      ++treeNumberOffset;
+
+    totalEvents_ = executeOne_(_nEntries, _firstEntry, treeNumberOffset, tree_);
+  }
 
   if (printLevel_ >= 0) {
     std::cout << "\r      " << totalEvents_ << " events" << std::endl;
@@ -403,7 +432,7 @@ double millisec(SteadyClock::duration const& interval)
 }
     
 long
-multidraw::MultiDraw::executeOne_(long _nEntries, long _firstEntry, unsigned _treeNumberOffset, TTree& _tree, std::mutex* _mutex/* = nullptr*/)
+multidraw::MultiDraw::executeOne_(long _nEntries, long _firstEntry, unsigned _treeNumberOffset, TTree& _tree, std::mutex* _mutex/* = nullptr*/, std::condition_variable* _condition/* = nullptr*/, std::atomic_bool* _initDone/* = nullptr*/)
 {
   std::vector<SteadyClock::duration> cutTimers;
   SteadyClock::duration ioTimer(SteadyClock::duration::zero());
@@ -467,6 +496,9 @@ multidraw::MultiDraw::executeOne_(long _nEntries, long _firstEntry, unsigned _tr
     
       cuts.push_back(cut);
     }
+
+    (*_initDone) = true;
+    _condition->notify_one();
   }
 
   std::vector<double> eventWeights;
@@ -727,7 +759,8 @@ multidraw::MultiDraw::executeOne_(long _nEntries, long _firstEntry, unsigned _tr
     // merge & cleanup
 
     // again we'll just lock the entire block
-    std::lock_guard<std::mutex> lock(*_mutex);
+    std::unique_lock<std::mutex> lock(*_mutex);
+    _condition->wait(lock, [_initDone]() { return bool(*_initDone); });
 
     for (auto* cut : cuts) {
       auto& origCut(findCut_(cut->getName()));
