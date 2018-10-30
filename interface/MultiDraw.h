@@ -19,6 +19,7 @@
 #include <vector>
 #include <mutex>
 #include <condition_variable>
+#include <atomic>
 
 namespace multidraw {
 
@@ -135,8 +136,15 @@ namespace multidraw {
     typedef std::function<ExprFiller*(TTreeFormulaCachedPtr const&)> ObjGen;
     ExprFiller& addObj_(TString const& cutName, char const* reweight, ObjGen const&);
     Cut& findCut_(TString const& cutName) const;
+    
+    struct SynchTools {
+      std::mutex mutex;
+      std::condition_variable condition;
+      std::atomic_bool flag{false};
+      std::atomic_ullong totalEvents{0};
+    };
 
-    long executeOne_(long nEntries, long firstEntry, unsigned treeNumberOffset, TTree&, std::mutex* = nullptr, std::condition_variable* = nullptr, std::atomic_bool* = nullptr);
+    long executeOne_(long nEntries, long firstEntry, unsigned treeNumberOffset, TTree&, SynchTools* = nullptr);
 
     TChain tree_;
     std::vector<TChain*> friendTrees_{};
