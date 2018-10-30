@@ -20,7 +20,7 @@ namespace multidraw {
 
     TString getName() const;
     unsigned getNFillers() const { return fillers_.size(); }
-    ExprFiller const* getFiller(unsigned i) { return fillers_.at(i); }
+    ExprFiller const* getFiller(unsigned i) const { return fillers_.at(i); }
 
     void addFiller(ExprFiller& _filler) { fillers_.push_back(&_filler); }
     void setFormula(TTreeFormulaCachedPtr const&);

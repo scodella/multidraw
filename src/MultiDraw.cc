@@ -303,6 +303,15 @@ multidraw::MultiDraw::findCut_(TString const& _cutName) const
   return **cutItr;
 }
 
+unsigned
+multidraw::MultiDraw::numObjs() const
+{
+  unsigned n(0);
+  for (auto* cut : cuts_)
+    n += cut->getNFillers();
+  return n;
+}
+
 typedef std::chrono::steady_clock SteadyClock;
 
 double millisec(SteadyClock::duration const& interval)
