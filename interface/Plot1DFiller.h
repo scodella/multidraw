@@ -29,10 +29,14 @@ namespace multidraw {
 
     Plot1DFiller(TH1& hist, TTreeFormulaCachedPtr const& expr, TTreeFormulaCachedPtr const& reweight = nullptr, OverflowMode mode = kDefault);
     Plot1DFiller(Plot1DFiller const&);
-    ~Plot1DFiller() {}
+    ~Plot1DFiller();
 
     TObject const& getObj() const override { return hist_; }
+    TObject& getObj() override { return hist_; }
     TH1 const& getHist() const { return hist_; }
+
+    ExprFiller* threadClone(FormulaLibrary&) const override;
+    void threadMerge(TObject&) override;
 
   private:
     void doFill_(unsigned) override;

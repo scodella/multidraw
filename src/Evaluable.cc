@@ -86,3 +86,12 @@ multidraw::Evaluable::evalInstance(unsigned _i)
   else
     return instanceVal_(_i);
 }
+
+TString
+multidraw::Evaluable::getExpression() const
+{
+  if (isFormula())
+    return formula_->GetTitle();
+  else
+    return "";
+}

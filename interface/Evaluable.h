@@ -23,6 +23,10 @@ namespace multidraw {
     void set(TTreeFormulaCachedPtr const&);
     void reset();
 
+    TString getExpression() const;
+    InstanceVal const& getInstanceVal() const { return instanceVal_; }
+    NData const& getNData() const { return ndata_; }
+
     bool isValid() const { return isFormula() || isFunction(); }
     bool isFormula() const { return bool(formula_); }
     bool isFunction() const { return bool(instanceVal_); }

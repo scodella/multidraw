@@ -1,6 +1,11 @@
 #include "../interface/TreeFiller.h"
+#include "../interface/FormulaLibrary.h"
+
+#include "TDirectory.h"
 
 #include <iostream>
+#include <sstream>
+#include <thread>
 
 multidraw::TreeFiller::TreeFiller(TTree& _tree, FormulaLibrary& _library, TTreeFormulaCachedPtr const& _reweight/* = nullptr*/) :
   ExprFiller(_reweight),
@@ -16,16 +21,24 @@ multidraw::TreeFiller::TreeFiller(TreeFiller const& _orig) :
   ExprFiller(_orig),
   tree_(_orig.tree_),
   library_(_orig.library_),
-  bvalues_(_orig.bvalues_)
+  bnames_(_orig.bnames_)
 {
   tree_.SetBranchAddress("weight", &entryWeight_);
 
   bvalues_.reserve(NBRANCHMAX);
+  bvalues_ = _orig.bvalues_;
 
-  // rely on the fact that the branch order should be aligned
-  auto* branches(tree_.GetListOfBranches());
-  for (int iB(0); iB != branches->GetEntries(); ++iB)
-    tree_.SetBranchAddress(branches->At(iB)->GetName(), &bvalues_[iB]);
+  for (unsigned iB(0); iB != bvalues_.size(); ++iB)
+    tree_.SetBranchAddress(bnames_[iB], &bvalues_[iB]);
+}
+
+multidraw::TreeFiller::~TreeFiller()
+{
+  if (isClone_) {
+    tree_.ResetBranchAddresses();
+    auto* dir(tree_.GetDirectory());
+    delete dir;
+  }
 }
 
 void
@@ -37,7 +50,39 @@ multidraw::TreeFiller::addBranch(char const* _bname, char const* _expr)
   bvalues_.resize(bvalues_.size() + 1);
   tree_.Branch(_bname, &bvalues_.back(), TString::Format("%s/D", _bname));
 
+  bnames_.emplace_back(_bname);
   exprs_.push_back(library_.getFormula(_expr));
+}
+
+multidraw::ExprFiller*
+multidraw::TreeFiller::threadClone(FormulaLibrary& _library) const
+{
+  std::stringstream name;
+  name << "tree_thread" << std::this_thread::get_id();
+  tree_.GetDirectory()->mkdir(name.str().c_str())->cd();
+  
+  auto* tree(new TTree(tree_.GetName(), tree_.GetTitle()));
+
+  TTreeFormulaCachedPtr reweight{};
+  if (reweight_)
+    reweight = _library.getFormula(reweight_->GetTitle());
+
+  auto* clone(new TreeFiller(*tree, _library, reweight));
+  clone->setClone();
+
+  for (unsigned iE(0); iE != exprs_.size(); ++iE)
+    clone->addBranch(bnames_[iE], exprs_[iE]->GetTitle());
+
+  return clone;
+}
+
+void
+multidraw::TreeFiller::threadMerge(TObject& _main)
+{
+  TTree& mainTree(static_cast<TTree&>(_main));
+  TObjArray arr;
+  arr.Add(&tree_);
+  mainTree.Merge(&arr);
 }
 
 void

@@ -21,10 +21,14 @@ namespace multidraw {
   public:
     Plot2DFiller(TH2& hist, TTreeFormulaCachedPtr const& xexpr, TTreeFormulaCachedPtr const& yexpr, TTreeFormulaCachedPtr const& reweight = nullptr);
     Plot2DFiller(Plot2DFiller const&);
-    ~Plot2DFiller() {}
+    ~Plot2DFiller();
 
     TObject const& getObj() const override { return hist_; }
+    TObject& getObj() override { return hist_; }
     TH2 const& getHist() const { return hist_; }
+
+    ExprFiller* threadClone(FormulaLibrary&) const override;
+    void threadMerge(TObject&) override;
 
   private:
     void doFill_(unsigned) override;

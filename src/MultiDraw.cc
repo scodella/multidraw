@@ -17,6 +17,8 @@
 #include <algorithm>
 #include <chrono>
 #include <numeric>
+#include <mutex>
+#include <thread>
 
 multidraw::MultiDraw::MultiDraw(char const* _treeName/* = "events"*/) :
   tree_(_treeName),
@@ -312,46 +314,158 @@ multidraw::MultiDraw::numObjs() const
   return n;
 }
 
+void
+multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
+{
+  if (inputMultiplexing_ > 1) {
+    if (treeReweight_.size() != 0 || globalReweight_.isValid())
+      throw std::runtime_error("Cannot multiplex input when tree reweights are set.");
+    
+    if (printLevel_ > 0)
+      std::cout << "Fetching the total number of events to split the input " << inputMultiplexing_ << " ways" << std::endl;
+
+    // This step also fills the offsets array of the TChain
+    long long nTotal(tree_.GetEntries());
+    long long nPerJob(nTotal / inputMultiplexing_);
+
+    std::mutex mutex;
+
+    auto threadTask([this, nPerJob, &mutex](long _firstEntry, unsigned _treeNumberOffset, TTree& _tree) {
+        long nProcessed(this->executeOne_(nPerJob, _firstEntry, _treeNumberOffset, _tree, &mutex));
+        std::lock_guard<std::mutex> lock(mutex);
+        totalEvents_ += nProcessed;
+      });
+
+    std::vector<TChain*> trees;
+    std::vector<std::thread*> threads;
+    long firstEntry(0);
+    for (unsigned iT(0); iT != inputMultiplexing_ - 1; ++iT) {
+      auto* tree(new TChain(tree_.GetName()));
+
+      unsigned treeNumberOffset(0);
+      while (firstEntry >= tree_.GetTreeOffset()[treeNumberOffset + 1])
+        ++treeNumberOffset;
+
+      auto* fileElements(tree_.GetListOfFiles());
+      for (unsigned iS(treeNumberOffset); iS != fileElements->GetEntries(); ++iS)
+        tree->Add(fileElements->At(iS)->GetTitle());
+
+      threads.push_back(new std::thread(threadTask, firstEntry, treeNumberOffset, std::ref(*tree)));
+      trees.push_back(tree);
+
+      firstEntry += nPerJob;
+    }
+
+    unsigned treeNumberOffset(0);
+    while (firstEntry >= tree_.GetTreeOffset()[treeNumberOffset + 1])
+      ++treeNumberOffset;
+
+    long nProcessed(executeOne_(-1, firstEntry, treeNumberOffset, tree_, &mutex));
+
+    for (unsigned iT(0); iT != inputMultiplexing_ - 1; ++iT) {
+      threads[iT]->join();
+      delete threads[iT];
+      delete trees[iT];
+    }
+    
+    totalEvents_ += nProcessed;
+  }
+  else
+    totalEvents_ = executeOne_(_nEntries, _firstEntry, 0, tree_);
+
+  if (printLevel_ >= 0) {
+    std::cout << "\r      " << totalEvents_ << " events" << std::endl;
+    if (printLevel_ > 0) {
+      for (unsigned iC(0); iC != cuts_.size(); ++iC) {
+        auto* cut(cuts_[iC]);
+        if (iC != 0 && cut->getNFillers() == 0)
+          continue;
+
+        std::cout << "        Cut " << cut->getName() << ": passed total " << cut->getCount() << std::endl;
+        if (printLevel_ > 1) {
+          for (unsigned iF(0); iF != cut->getNFillers(); ++iF) {
+            auto* filler(cut->getFiller(iF));
+            std::cout << "          " << filler->getObj().GetName() << ": " << filler->getCount() << std::endl;
+          }
+        }
+      }
+    }
+  }
+}
+
 typedef std::chrono::steady_clock SteadyClock;
 
 double millisec(SteadyClock::duration const& interval)
 {
   return std::chrono::duration_cast<std::chrono::nanoseconds>(interval).count() * 1.e-6;
 }
-
-void
-multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
+    
+long
+multidraw::MultiDraw::executeOne_(long _nEntries, long _firstEntry, unsigned _treeNumberOffset, TTree& _tree, std::mutex* _mutex/* = nullptr*/)
 {
-  long printEvery(10000);
-  if (printLevel_ == 3)
-    printEvery = 100;
-  else if (printLevel_ >= 4)
-    printEvery = 1;
-
   std::vector<SteadyClock::duration> cutTimers;
   SteadyClock::duration ioTimer(SteadyClock::duration::zero());
   SteadyClock::duration eventTimer(SteadyClock::duration::zero());
+  SteadyClock::time_point start;
 
-  // Select only the cuts with at least one filler
+  int printLevel(-1);
+  bool doTimeProfile(false);
+
+  FormulaLibrary* library{nullptr};
   std::vector<Cut*> cuts;
 
-  for (unsigned iC(0); iC != cuts_.size(); ++iC) {
-    auto* cut(cuts_[iC]);
-    if (iC != 0 && cut->getNFillers() == 0)
-      continue;
+  if (&_tree == &tree_) {
+    // main thread
+    library = &library_;
+
+    printLevel = printLevel_;
+    doTimeProfile = doTimeProfile_;
+
+    for (unsigned iC(0); iC != cuts_.size(); ++iC) {
+      auto* cut(cuts_[iC]);
+      if (iC != 0 && cut->getNFillers() == 0)
+        continue;
+
+      cut->setPrintLevel(printLevel);
+      cut->resetCount();
     
-    cut->setPrintLevel(printLevel_);
-    cut->resetCount();
-
-    cuts.push_back(cut);
-
-    if (doTimeProfile_)
-      cutTimers.emplace_back(SteadyClock::duration::zero());
+      cuts.push_back(cut);
+    
+      if (doTimeProfile)
+        cutTimers.emplace_back(SteadyClock::duration::zero());
+    }
   }
+  else {
+    // side threads - need to recreate the entire formula library for the given tree
+    
+    // the only part that needs a lock is filler cloning, but we'll just lock here
+    std::lock_guard<std::mutex> lock(*_mutex);
 
-  // Also delete unused formulas
-  // Cannot do this because there are formulas captured by lambdas
-  //  library_.prune();
+    library = new FormulaLibrary(_tree);
+
+    for (unsigned iC(0); iC != cuts_.size(); ++iC) {
+      auto* origCut(cuts_[iC]);
+      if (iC != 0 && origCut->getNFillers() == 0)
+        continue;
+
+      auto& origFormula(origCut->getFormula());
+
+      Cut* cut(nullptr);
+      if (origFormula.isFormula())
+        cut = new Cut(origCut->getName(), library->getFormula(origFormula.getExpression()));
+      else
+        cut = new Cut(origCut->getName(), origFormula.getInstanceVal(), origFormula.getNData());
+
+      for (unsigned iF(0); iF != origCut->getNFillers(); ++iF) {
+        auto* filler(origCut->getFiller(iF));
+        cut->addFiller(*filler->threadClone(*library));
+      }
+
+      cut->setPrintLevel(-1);
+    
+      cuts.push_back(cut);
+    }
+  }
 
   std::vector<double> eventWeights;
 
@@ -383,35 +497,39 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
   Evaluable* treeReweight{nullptr};
   bool exclusiveTreeReweight(false);
 
-  SteadyClock::time_point start;
+  long printEvery(10000);
+  if (printLevel_ == 3)
+    printEvery = 100;
+  else if (printLevel_ >= 4)
+    printEvery = 1;
   
   while (iEntry != iEntryMax) {
-    if (doTimeProfile_)
+    if (doTimeProfile)
       start = SteadyClock::now();
 
     // iEntryNumber != iEntry if tree has a TEntryList set
-    long long iEntryNumber(tree_.GetEntryNumber(iEntry++));
+    long long iEntryNumber(_tree.GetEntryNumber(iEntry++));
     if (iEntryNumber < 0)
       break;
 
-    long long iLocalEntry(tree_.LoadTree(iEntryNumber));
+    long long iLocalEntry(_tree.LoadTree(iEntryNumber));
     if (iLocalEntry < 0)
       break;
 
-    if (printLevel_ >= 0 && iEntry % printEvery == 0) {
+    if (printLevel >= 0 && iEntry % printEvery == 0) {
       std::cout << "\r      " << iEntry << " events";
-      if (printLevel_ > 2)
+      if (printLevel > 2)
         std::cout << std::endl;
     }
 
-    if (treeNumber != tree_.GetTreeNumber()) {
-      if (printLevel_ > 1)
-        std::cout << "      Opened a new file: " << tree_.GetCurrentFile()->GetName() << std::endl;
+    if (treeNumber != _tree.GetTreeNumber()) {
+      if (printLevel > 1)
+        std::cout << "      Opened a new file: " << _tree.GetCurrentFile()->GetName() << std::endl;
 
-      treeNumber = tree_.GetTreeNumber();
+      treeNumber = _tree.GetTreeNumber();
 
       if (weightBranchName_.Length() != 0) {
-        weightBranch = tree_.GetBranch(weightBranchName_);
+        weightBranch = _tree.GetBranch(weightBranchName_);
         if (!weightBranch)
           throw std::runtime_error(("Could not find branch " + weightBranchName_).Data());
 
@@ -432,7 +550,7 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
       }
 
       if (prescale_ > 1 && evtNumBranchName_.Length() != 0) {
-        evtNumBranch = tree_.GetBranch(evtNumBranchName_);
+        evtNumBranch = _tree.GetBranch(evtNumBranchName_);
         if (!evtNumBranch)
           throw std::runtime_error(("Could not find branch " + evtNumBranchName_).Data());
 
@@ -460,10 +578,10 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
           throw std::runtime_error(("I do not know how to read the leaf type of branch " + evtNumBranchName_).Data());
       }
 
-      for (auto& ff : library_)
+      for (auto& ff : *library)
         ff.second->UpdateFormulaLeaves();
 
-      auto wItr(treeWeight_.find(treeNumber));
+      auto wItr(treeWeight_.find(treeNumber + _treeNumberOffset));
       if (wItr == treeWeight_.end())
         treeWeight = globalWeight_;
       else if (wItr->second.second) // exclusive tree-by-tree weight
@@ -471,7 +589,7 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
       else
         treeWeight = globalWeight_ * wItr->second.first;
 
-      auto rItr(treeReweight_.find(treeNumber));
+      auto rItr(treeReweight_.find(treeNumber + _treeNumberOffset));
       if (rItr == treeReweight_.end()) {
         if (globalReweight_.isValid())
           treeReweight = &globalReweight_;
@@ -490,7 +608,7 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
       if (evtNumBranch != nullptr)
         evtNumBranch->GetEntry(iLocalEntry);
 
-      if (printLevel_ > 3)
+      if (printLevel > 3)
         std::cout << "        Event number " << getEvtNum() << std::endl;
 
       if (getEvtNum() % prescale_ != 0)
@@ -498,10 +616,10 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
     }
 
     // Reset formula cache
-    for (auto& ff : library_)
+    for (auto& ff : *library)
       ff.second.get()->ResetCache();
 
-    if (doTimeProfile_) {
+    if (doTimeProfile) {
       ioTimer += SteadyClock::now() - start;
       start = SteadyClock::now();
     }
@@ -509,7 +627,7 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
     // First cut (name "") is a global filter
     bool passFilter(cuts[0]->evaluate());
 
-    if (doTimeProfile_) {
+    if (doTimeProfile) {
       cutTimers[0] += SteadyClock::now() - start;
       start = SteadyClock::now();
     }
@@ -520,11 +638,11 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
     if (weightBranch != nullptr) {
       weightBranch->GetEntry(iLocalEntry);
 
-      if (printLevel_ > 3)
+      if (printLevel > 3)
         std::cout << "        Input weight " << getWeight() << std::endl;
     }
 
-    if (doTimeProfile_) {
+    if (doTimeProfile) {
       ioTimer += SteadyClock::now() - start;
       start = SteadyClock::now();
     }
@@ -552,21 +670,21 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
     else
       eventWeights.assign(1, commonWeight);
 
-    if (printLevel_ > 3) {
+    if (printLevel > 3) {
       std::cout << "         Global weights: ";
       for (double w : eventWeights)
         std::cout << w << " ";
       std::cout << std::endl;
     }
 
-    if (doTimeProfile_) {
+    if (doTimeProfile) {
       eventTimer += SteadyClock::now() - start;
       start = SteadyClock::now();
     }
 
     cuts[0]->fillExprs(eventWeights);
 
-    if (doTimeProfile_) {
+    if (doTimeProfile) {
       cutTimers[0] += SteadyClock::now() - start;
       start = SteadyClock::now();
     }
@@ -575,46 +693,55 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
       if (cuts[iC]->evaluate())
         cuts[iC]->fillExprs(eventWeights);
 
-      if (doTimeProfile_) {
+      if (doTimeProfile) {
         cutTimers[iC] += SteadyClock::now() - start;
         start = SteadyClock::now();
       }
     }
   }
 
-  totalEvents_ = iEntry;
+  if (printLevel >= 0 && doTimeProfile) {
+    double totalTime(millisec(ioTimer) + millisec(eventTimer));
+    totalTime += millisec(std::accumulate(cutTimers.begin(), cutTimers.end(), SteadyClock::duration::zero()));
+    std::cout << " Execution time: " << (totalTime / iEntry) << " ms/evt" << std::endl;
 
-  if (printLevel_ >= 0) {
-    std::cout << "\r      " << iEntry << " events" << std::endl;
-    if (doTimeProfile_) {
-      double totalTime(millisec(ioTimer) + millisec(eventTimer));
-      totalTime += millisec(std::accumulate(cutTimers.begin(), cutTimers.end(), SteadyClock::duration::zero()));
-      std::cout << " Execution time: " << (totalTime / totalEvents_) << " ms/evt" << std::endl;
+    std::cout << "        Time spent on tree input: " << (millisec(ioTimer) / iEntry) << " ms/evt" << std::endl;
+    std::cout << "        Time spent on event reweighting: " << (millisec(eventTimer) / iEntry) << " ms/evt" << std::endl;
+
+    if (printLevel > 0) {
+      for (unsigned iC(0); iC != cuts.size(); ++iC) {
+        auto* cut(cuts[iC]);
+        double cutTime(0.);
+        if (iC == 0)
+          cutTime = millisec(cutTimers[0]) / iEntry;
+        else
+          cutTime = millisec(cutTimers[iC]) / cuts[0]->getCount();
+        std::cout << "        cut " << cut->getName() << ": " << cutTime << " ms/evt" << std::endl;
+      }
     }
   }
 
-  if (printLevel_ > 0) {
-    if (doTimeProfile_) {
-      std::cout << "        Time spent on tree input: " << (millisec(ioTimer) / totalEvents_) << " ms/evt" << std::endl;
-      std::cout << "        Time spent on event reweighting: " << (millisec(eventTimer) / totalEvents_) << " ms/evt" << std::endl;
-    }
+  if (&_tree != &tree_) {
+    // merge & cleanup
 
-    for (unsigned iC(0); iC != cuts.size(); ++iC) {
-      auto* cut(cuts[iC]);
-      std::cout << "        Cut " << cut->getName() << ": passed total " << cut->getCount() << std::endl;
-      if (doTimeProfile_) {
-        double cutTime(0.);
-        if (iC == 0)
-          cutTime = millisec(cutTimers[0]) / totalEvents_;
-        else
-          cutTime = millisec(cutTimers[iC]) / cuts[0]->getCount();
-        std::cout << "        time: " << cutTime << " ms/evt" << std::endl;
-      }
+    // again we'll just lock the entire block
+    std::lock_guard<std::mutex> lock(*_mutex);
+
+    for (auto* cut : cuts) {
+      auto& origCut(findCut_(cut->getName()));
 
       for (unsigned iF(0); iF != cut->getNFillers(); ++iF) {
         auto* filler(cut->getFiller(iF));
-        std::cout << "          " << filler->getObj().GetName() << ": " << filler->getCount() << std::endl;
+        auto* origFiller(origCut.getFiller(iF));
+
+        filler->threadMerge(origFiller->getObj());
       }
+
+      delete cut;
     }
+    
+    delete library;
   }
+
+  return iEntry;
 }

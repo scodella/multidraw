@@ -17,6 +17,7 @@
 #include "TString.h"
 
 #include <vector>
+#include <mutex>
 
 namespace multidraw {
 
@@ -97,6 +98,13 @@ namespace multidraw {
     //! Run and fill the plots and trees.
     void execute(long nEntries = -1, long firstEntry = 0);
 
+    //! Set input tree multiplexing.
+    /*
+     * If multiplex > 1, execute() will launch multiple processes to process parts of the input. This
+     * can speed up the overall processing unless I/O is saturated.
+     */
+    void setInputMultiplexing(unsigned mux) { inputMultiplexing_ = mux; }
+
     //! Set the print level.
     /*
      * Level -1: silent
@@ -107,6 +115,12 @@ namespace multidraw {
      * Level  4: debug print out
      */
     void setPrintLevel(int l) { printLevel_ = l; }
+
+    //! Set time profiling switch.
+    /*
+     * If true, execute() call records execution times of various parts of the function and prints the
+     * summary according to the print level.
+     */
     void setDoTimeProfile(bool d) { doTimeProfile_ = d; }
 
     long getTotalEvents() const { return totalEvents_; }
@@ -121,11 +135,14 @@ namespace multidraw {
     ExprFiller& addObj_(TString const& cutName, char const* reweight, ObjGen const&);
     Cut& findCut_(TString const& cutName) const;
 
+    long executeOne_(long nEntries, long firstEntry, unsigned treeNumberOffset, TTree&, std::mutex* = nullptr);
+
     TChain tree_;
     std::vector<TChain*> friendTrees_{};
     TString weightBranchName_{"weight"};
     TString evtNumBranchName_{""};
 
+    unsigned inputMultiplexing_{1};
     unsigned prescale_{1};
 
     std::vector<Cut*> cuts_;
