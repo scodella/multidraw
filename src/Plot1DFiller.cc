@@ -7,7 +7,7 @@
 #include <sstream>
 #include <thread>
 
-multidraw::Plot1DFiller::Plot1DFiller(TH1& _hist, TTreeFormulaCachedPtr const& _expr, TTreeFormulaCachedPtr const& _reweight/* = nullptr*/, Plot1DFiller::OverflowMode _mode/* = kDefault*/) :
+multidraw::Plot1DFiller::Plot1DFiller(TH1& _hist, TTreeFormulaCachedPtr const& _expr, Reweight const& _reweight, Plot1DFiller::OverflowMode _mode/* = kDefault*/) :
   ExprFiller(_reweight),
   hist_(_hist),
   overflowMode_(_mode)
@@ -37,9 +37,8 @@ multidraw::Plot1DFiller::threadClone(FormulaLibrary& _library) const
   auto* hist(static_cast<TH1*>(hist_.Clone(name.str().c_str())));
 
   auto& expr(_library.getFormula(exprs_[0]->GetTitle()));
-  TTreeFormulaCachedPtr reweight{};
-  if (reweight_)
-    reweight = _library.getFormula(reweight_->GetTitle());
+
+  Reweight reweight(reweight_.threadClone(_library));
 
   auto* clone(new Plot1DFiller(*hist, expr, reweight, overflowMode_));
   clone->setClone();

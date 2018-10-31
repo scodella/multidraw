@@ -7,7 +7,7 @@
 #include <sstream>
 #include <thread>
 
-multidraw::TreeFiller::TreeFiller(TTree& _tree, FormulaLibrary& _library, TTreeFormulaCachedPtr const& _reweight/* = nullptr*/) :
+multidraw::TreeFiller::TreeFiller(TTree& _tree, FormulaLibrary& _library, Reweight const& _reweight) :
   ExprFiller(_reweight),
   tree_(_tree),
   library_(_library)
@@ -63,9 +63,7 @@ multidraw::TreeFiller::threadClone(FormulaLibrary& _library) const
   
   auto* tree(new TTree(tree_.GetName(), tree_.GetTitle()));
 
-  TTreeFormulaCachedPtr reweight{};
-  if (reweight_)
-    reweight = _library.getFormula(reweight_->GetTitle());
+  Reweight reweight(reweight_.threadClone(_library));
 
   auto* clone(new TreeFiller(*tree, _library, reweight));
   clone->setClone();

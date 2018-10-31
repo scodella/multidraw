@@ -2,15 +2,16 @@
 
 #include <iostream>
 
-multidraw::ExprFiller::ExprFiller(TTreeFormulaCachedPtr const& _reweight/* = nullptr*/) :
+multidraw::ExprFiller::ExprFiller(Reweight const& _reweight) :
   reweight_(_reweight)
 {
 }
 
-multidraw::ExprFiller::ExprFiller(ExprFiller const& _orig)
+multidraw::ExprFiller::ExprFiller(ExprFiller const& _orig) :
+  exprs_(_orig.exprs_),
+  reweight_(_orig.reweight_),
+  printLevel_(_orig.printLevel_)
 {
-  exprs_ = _orig.exprs_;
-  reweight_ = _orig.reweight_;
 }
 
 void
@@ -39,11 +40,6 @@ multidraw::ExprFiller::fill(std::vector<double> const& _eventWeights, std::vecto
         if (iD != 0) // need to always call EvalInstance(0)
           expr->EvalInstance(0);
       }
-      if (reweight_) {
-        reweight_->GetNdata();
-        if (iD != 0)
-          reweight_->EvalInstance(0);
-      }
     }
 
     loaded = true;
@@ -53,8 +49,7 @@ multidraw::ExprFiller::fill(std::vector<double> const& _eventWeights, std::vecto
     else
       entryWeight_ = _eventWeights.back();
 
-    if (reweight_)
-      entryWeight_ *= reweight_->EvalInstance(iD);
+    entryWeight_ *= reweight_.evaluate(iD);
 
     doFill_(iD);
   }

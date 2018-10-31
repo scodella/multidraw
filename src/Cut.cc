@@ -3,16 +3,11 @@
 
 #include <iostream>
 
-multidraw::Cut::Cut(char const* _name, TTreeFormulaCachedPtr const& _formula) :
+multidraw::Cut::Cut(char const* _name, TTreeFormulaCachedPtr const& _formula/* = nullptr*/) :
   name_(_name)
 {
-  setFormula(_formula);
-}
-
-multidraw::Cut::Cut(char const* _name, Evaluable::InstanceVal const& _inst, Evaluable::NData const& _ndata/* = nullptr*/) :
-  name_(_name)
-{
-  setFormula(_inst, _ndata);
+  if (_formula)
+    setFormula(_formula);
 }
 
 multidraw::Cut::~Cut()
@@ -33,22 +28,11 @@ multidraw::Cut::getName() const
 void
 multidraw::Cut::setFormula(TTreeFormulaCachedPtr const& _formula)
 {
-  cut_.set(_formula);
+  cut_ = _formula;
 
   delete instanceMask_;
   instanceMask_ = nullptr;
-  if (!cut_.singleValue())
-    instanceMask_ = new std::vector<bool>;
-}
-
-void
-multidraw::Cut::setFormula(Evaluable::InstanceVal const& _inst, Evaluable::NData const& _ndata/* = nullptr*/)
-{
-  cut_.set(_inst, _ndata);
-
-  delete instanceMask_;
-  instanceMask_ = nullptr;
-  if (!cut_.singleValue())
+  if (cut_->GetMultiplicity() != 0)
     instanceMask_ = new std::vector<bool>;
 }
 
@@ -71,9 +55,12 @@ multidraw::Cut::resetCount()
 bool
 multidraw::Cut::evaluate()
 {
-  unsigned nD(cut_.getNdata());
+  if (!cut_)
+    return true;
 
-  if (!cut_.singleValue())
+  unsigned nD(cut_->GetNdata());
+
+  if (cut_->GetMultiplicity() != 0)
     instanceMask_->assign(nD, false);
 
   if (printLevel_ > 2)
@@ -82,7 +69,7 @@ multidraw::Cut::evaluate()
   bool any(false);
 
   for (unsigned iD(0); iD != nD; ++iD) {
-    if (cut_.evalInstance(iD) == 0.)
+    if (cut_->EvalInstance(iD) == 0.)
       continue;
 
     any = true;
@@ -90,7 +77,7 @@ multidraw::Cut::evaluate()
     if (printLevel_ > 2)
       std::cout << "        " << getName() << " iteration " << iD << " pass" << std::endl;
 
-    if (!cut_.singleValue())
+    if (cut_->GetMultiplicity() != 0)
       (*instanceMask_)[iD] = true;
   }
   

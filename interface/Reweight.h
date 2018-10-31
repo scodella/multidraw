@@ -1,0 +1,69 @@
+#ifndef multidraw_Reweight_h
+#define multidraw_Reweight_h
+
+#include "TTreeFormulaCached.h"
+#include "FormulaLibrary.h"
+
+#include "TH1.h"
+#include "TGraph.h"
+#include "TF1.h"
+
+#include <functional>
+
+class TSpline3;
+
+namespace multidraw {
+
+  class Reweight {
+  public:
+    Reweight() {}
+    Reweight(TTreeFormulaCachedPtr const&);
+    Reweight(TH1 const&, TTreeFormulaCachedPtr const&, TTreeFormulaCachedPtr const& = nullptr, TTreeFormulaCachedPtr const& = nullptr);
+    Reweight(TGraph const&, TTreeFormulaCachedPtr const&);
+    Reweight(TF1 const&, TTreeFormulaCachedPtr const&, TTreeFormulaCachedPtr const& = nullptr, TTreeFormulaCachedPtr const& = nullptr);
+    Reweight(Reweight const&);
+    ~Reweight();
+    Reweight& operator=(Reweight const&);
+
+    //! Set the tree formula to reweight with.
+    void set(TTreeFormulaCachedPtr const& formula);
+    //! Reweight through a histogram. Formulas return the x, y, z values to be fed to the histogram.
+    void set(TH1 const&, TTreeFormulaCachedPtr const&, TTreeFormulaCachedPtr const& = nullptr, TTreeFormulaCachedPtr const& = nullptr);
+    //! Reweight through a graph. Formula returns the x value.
+    void set(TGraph const&, TTreeFormulaCachedPtr const&);
+    //! Reweight through a function. Formulas return the x, y, z values to be fed to the histogram.
+    void set(TF1 const&, TTreeFormulaCachedPtr const&, TTreeFormulaCachedPtr const& = nullptr, TTreeFormulaCachedPtr const& = nullptr);
+
+    void reset();
+
+    unsigned getNdim() const { return formulas_.size(); }
+    TTreeFormulaCached const* getFormula(unsigned i = 0) const { return formulas_.at(i).get(); }
+    TObject const* getSource() const { return source_; }
+
+    unsigned getNdata();
+    double evaluate(unsigned i = 0) const { if (evaluate_) return evaluate_(i); else return 1.; }
+
+    Reweight threadClone(FormulaLibrary&) const;
+
+  private:
+    void setRaw_();
+    void setTH1_();
+    void setTGraph_();
+    void setTF1_();
+
+    double evaluateRaw_(unsigned);
+    double evaluateTH1_(unsigned);
+    double evaluateTGraph_(unsigned);
+    double evaluateTF1_(unsigned);
+
+    //! One entry per source dimension
+    std::vector<TTreeFormulaCachedPtr> formulas_{};
+    TObject const* source_{nullptr};
+    TSpline3* spline_{nullptr};
+
+    std::function<double(unsigned)> evaluate_{};
+  };
+
+}
+
+#endif

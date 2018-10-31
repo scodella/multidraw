@@ -1,9 +1,7 @@
 #ifndef multidraw_TreeFiller_h
 #define multidraw_TreeFiller_h
 
-#include "TTreeFormulaCached.h"
 #include "ExprFiller.h"
-#include "FormulaLibrary.h"
 
 #include "TTree.h"
 
@@ -19,7 +17,7 @@ namespace multidraw {
    */
   class TreeFiller : public ExprFiller {
   public:
-    TreeFiller(TTree& tree, FormulaLibrary& library, TTreeFormulaCachedPtr const& reweight = nullptr);
+    TreeFiller(TTree& tree, FormulaLibrary& library, Reweight const& reweight);
     TreeFiller(TreeFiller const&);
     ~TreeFiller();
 

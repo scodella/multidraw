@@ -7,7 +7,7 @@
 #include "Plot2DFiller.h"
 #include "TreeFiller.h"
 #include "Cut.h"
-#include "Evaluable.h"
+#include "Reweight.h"
 #include "FormulaLibrary.h"
 
 #include "TChain.h"
@@ -83,6 +83,8 @@ namespace multidraw {
      * sections in one shot.
      */
     void setReweight(char const* expr, TObject const* source = nullptr, int treeNumber = -1, bool exclusive = true);
+    //! Set an overall reweight, possibly varying by input tree.
+    void setReweight(Reweight const&, int treeNumber = -1, bool exclusive = true);
     //! Set a prescale factor
     /*!
      * When prescale_ > 1, only events that satisfy eventNumber % prescale_ == 0 are read.
@@ -133,7 +135,7 @@ namespace multidraw {
 
   private:
     //! Handle addPlot and addTree with the same interface (requires a callback to generate the right object)
-    typedef std::function<ExprFiller*(TTreeFormulaCachedPtr const&)> ObjGen;
+    typedef std::function<ExprFiller*(Reweight const&)> ObjGen;
     ExprFiller& addObj_(TString const& cutName, char const* reweight, ObjGen const&);
     Cut& findCut_(TString const& cutName) const;
     
@@ -158,9 +160,9 @@ namespace multidraw {
     FormulaLibrary library_;
 
     double globalWeight_{1.};
-    Evaluable globalReweight_{};
-    std::map<int, std::pair<double, bool>> treeWeight_{};
-    std::map<int, std::pair<Evaluable, bool>> treeReweight_{};
+    Reweight globalReweight_{};
+    std::map<unsigned, std::pair<double, bool>> treeWeights_{};
+    std::map<unsigned, std::pair<Reweight, bool>> treeReweights_{};
 
     int printLevel_{0};
     bool doTimeProfile_{0};

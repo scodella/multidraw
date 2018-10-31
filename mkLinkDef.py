@@ -32,6 +32,11 @@ else:
 
 # Write the LinkDef file
 
+try:
+    os.makedirs(os.path.dirname(linkdef_path))
+except OSError:
+    pass
+
 with open(thisdir + '/' + linkdef_path, 'w') as out:
     # Include all headers
     for fname in os.listdir(thisdir + '/interface'):

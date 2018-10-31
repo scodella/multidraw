@@ -1,7 +1,6 @@
 #ifndef multidraw_Plot2DFiller_h
 #define multidraw_Plot2DFiller_h
 
-#include "TTreeFormulaCached.h"
 #include "ExprFiller.h"
 
 #include "TH2.h"
@@ -19,7 +18,7 @@ namespace multidraw {
    */
   class Plot2DFiller : public ExprFiller {
   public:
-    Plot2DFiller(TH2& hist, TTreeFormulaCachedPtr const& xexpr, TTreeFormulaCachedPtr const& yexpr, TTreeFormulaCachedPtr const& reweight = nullptr);
+    Plot2DFiller(TH2& hist, TTreeFormulaCachedPtr const& xexpr, TTreeFormulaCachedPtr const& yexpr, Reweight const& reweight);
     Plot2DFiller(Plot2DFiller const&);
     ~Plot2DFiller();
 

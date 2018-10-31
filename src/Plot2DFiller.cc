@@ -7,7 +7,7 @@
 #include <sstream>
 #include <thread>
 
-multidraw::Plot2DFiller::Plot2DFiller(TH2& _hist, TTreeFormulaCachedPtr const& _xexpr, TTreeFormulaCachedPtr const& _yexpr, TTreeFormulaCachedPtr const& _reweight/* = nullptr*/) :
+multidraw::Plot2DFiller::Plot2DFiller(TH2& _hist, TTreeFormulaCachedPtr const& _xexpr, TTreeFormulaCachedPtr const& _yexpr, Reweight const& _reweight) :
   ExprFiller(_reweight),
   hist_(_hist)
 {
@@ -37,9 +37,8 @@ multidraw::Plot2DFiller::threadClone(FormulaLibrary& _library) const
 
   auto& xexpr(_library.getFormula(exprs_[0]->GetTitle()));
   auto& yexpr(_library.getFormula(exprs_[1]->GetTitle()));
-  TTreeFormulaCachedPtr reweight{};
-  if (reweight_)
-    reweight = _library.getFormula(reweight_->GetTitle());
+
+  Reweight reweight(reweight_.threadClone(_library));
 
   auto* clone(new Plot2DFiller(*hist, xexpr, yexpr, reweight));
   clone->setClone();

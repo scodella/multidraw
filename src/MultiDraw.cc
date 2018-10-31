@@ -24,7 +24,7 @@ multidraw::MultiDraw::MultiDraw(char const* _treeName/* = "events"*/) :
   tree_(_treeName),
   library_(tree_)
 {
-  cuts_.push_back(new Cut("", [](unsigned)->double { return 1.; }));
+  cuts_.push_back(new Cut(""));
 }
 
 multidraw::MultiDraw::~MultiDraw()
@@ -110,7 +110,7 @@ void
 multidraw::MultiDraw::setConstantWeight(double _w, int _treeNumber/* = -1*/, bool _exclusive/* = true*/)
 {
   if (_treeNumber >= 0)
-    treeWeight_[_treeNumber] = std::make_pair(_w, _exclusive);
+    treeWeights_[_treeNumber] = std::make_pair(_w, _exclusive);
   else
     globalWeight_ = _w;
 }
@@ -118,12 +118,11 @@ multidraw::MultiDraw::setConstantWeight(double _w, int _treeNumber/* = -1*/, boo
 void
 multidraw::MultiDraw::setReweight(char const* _expr, TObject const* _source/* = nullptr*/, int _treeNumber/* = -1*/, bool _exclusive/* = true*/)
 {
-  Evaluable& reweight(_treeNumber >= 0 ? treeReweight_[_treeNumber].first : globalReweight_);
-
+  Reweight& reweight(_treeNumber >= 0 ? treeReweights_[_treeNumber].first : globalReweight_);
   reweight.reset();
 
   if (_treeNumber >= 0)
-    treeReweight_[_treeNumber].second = _exclusive;
+    treeReweights_[_treeNumber].second = _exclusive;
 
   if (!_expr || std::strlen(_expr) == 0)
     return;
@@ -134,72 +133,14 @@ multidraw::MultiDraw::setReweight(char const* _expr, TObject const* _source/* = 
     // Expression is directly the reweight factor
     reweight.set(formula);
   }
-  else {
-    // Otherwise we evaluate the value of the formula over the source
-
-    Evaluable::InstanceVal instanceVal;
-
-    if (_source->InheritsFrom(TH1::Class())) {
-      auto* source(static_cast<TH1 const*>(_source));
-
-      instanceVal = [&formula, source](unsigned iD)->double {
-        double x(formula->EvalInstance(iD));
-
-        int iX(source->FindFixBin(x));
-        if (iX == 0)
-          iX = 1;
-        else if (iX > source->GetNbinsX())
-          iX = source->GetNbinsX();
-
-        return source->GetBinContent(iX);
-      };
-    }
-    else if (_source->InheritsFrom(TGraph::Class())) {
-      auto* source(static_cast<TGraph const*>(_source));
-
-      int n(source->GetN());
-      double* xvals(source->GetX());
-      for (int i(0); i != n - 1; ++i) {
-        if (xvals[i] >= xvals[i + 1])
-          throw std::runtime_error("Reweight TGraph source must have xvalues in increasing order");
-      }
-
-      instanceVal = [&formula, source](unsigned iD)->double {
-        double x(formula->EvalInstance(iD));
-
-        int n(source->GetN());
-        double* xvals(source->GetX());
-
-        double* b(std::upper_bound(xvals, xvals + n, x));
-        if (b == xvals + n)
-          return source->GetY()[n - 1];
-        else if (b == xvals)
-          return source->GetY()[0];
-        else {
-          // interpolate
-          int low(b - xvals - 1);
-          double dlow(x - xvals[low]);
-          double dhigh(xvals[low + 1] - x);
-
-          return (source->GetY()[low] * dhigh + source->GetY()[low + 1] * dlow) / (xvals[low + 1] - xvals[low]);
-        }
-      };
-    }
-    else if (_source->InheritsFrom(TF1::Class())) {
-      auto* source(static_cast<TF1 const*>(_source));
-
-      instanceVal = [&formula, source](unsigned iD)->double {
-        return source->Eval(formula->EvalInstance(iD));
-      };
-    }
-    else
-      throw std::runtime_error("Incompatible object passed as reweight source");
-
-    Evaluable::NData ndata{nullptr};
-    if (formula->GetMultiplicity() != 0)
-      ndata = [&formula]()->unsigned { return formula->GetNdata(); };
-
-    reweight.set(instanceVal, ndata);
+  else if (_source->InheritsFrom(TH1::Class())) {
+    reweight.set(static_cast<TH1 const&>(*_source), formula);
+  }
+  else if (_source->InheritsFrom(TGraph::Class())) {
+    reweight.set(static_cast<TGraph const&>(*_source), formula);
+  }
+  else if (_source->InheritsFrom(TF1::Class())) {
+    reweight.set(static_cast<TF1 const&>(*_source), formula);
   }
 }
 
@@ -213,62 +154,62 @@ multidraw::MultiDraw::setPrescale(unsigned _p, char const* _evtNumBranch/* = ""*
 }
 
 multidraw::Plot1DFiller&
-multidraw::MultiDraw::addPlot(TH1* _hist, char const* _expr, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/, Plot1DFiller::OverflowMode _overflowMode/* = kDefault*/)
+multidraw::MultiDraw::addPlot(TH1* _hist, char const* _expr, char const* _cutName/* = ""*/, char const* _rwgt/* = ""*/, Plot1DFiller::OverflowMode _overflowMode/* = kDefault*/)
 {
   auto& exprFormula(library_.getFormula(_expr));
 
-  auto newPlot1D([_hist, _overflowMode, &exprFormula](TTreeFormulaCachedPtr const& _reweightFormula)->ExprFiller* {
-      return new Plot1DFiller(*_hist, exprFormula, _reweightFormula, _overflowMode);
+  auto newPlot1D([_hist, _overflowMode, &exprFormula](Reweight const& _reweight)->ExprFiller* {
+      return new Plot1DFiller(*_hist, exprFormula, _reweight, _overflowMode);
     });
 
   if (printLevel_ > 1) {
     std::cout << "\nAdding Plot " << _hist->GetName() << " with expression " << _expr << std::endl;
     if (_cutName != nullptr && std::strlen(_cutName) != 0)
       std::cout << " Cut: " << _cutName << std::endl;
-    if (_reweight != nullptr && std::strlen(_reweight) != 0)
-      std::cout << " Reweight: " << _reweight << std::endl;
+    if (_rwgt != nullptr && std::strlen(_rwgt) != 0)
+      std::cout << " Rwgt: " << _rwgt << std::endl;
   }
 
-  return static_cast<Plot1DFiller&>(addObj_(_cutName, _reweight, newPlot1D));
+  return static_cast<Plot1DFiller&>(addObj_(_cutName, _rwgt, newPlot1D));
 }
 
 multidraw::Plot2DFiller&
-multidraw::MultiDraw::addPlot2D(TH2* _hist, char const* _xexpr, char const* _yexpr, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/)
+multidraw::MultiDraw::addPlot2D(TH2* _hist, char const* _xexpr, char const* _yexpr, char const* _cutName/* = ""*/, char const* _rwgt/* = ""*/)
 {
   auto& xexprFormula(library_.getFormula(_xexpr));
   auto& yexprFormula(library_.getFormula(_yexpr));
 
-  auto newPlot2D([_hist, &xexprFormula, &yexprFormula](TTreeFormulaCachedPtr const& _reweightFormula)->ExprFiller* {
-      return new Plot2DFiller(*_hist, xexprFormula, yexprFormula, _reweightFormula);
+  auto newPlot2D([_hist, &xexprFormula, &yexprFormula](Reweight const& _reweight)->ExprFiller* {
+      return new Plot2DFiller(*_hist, xexprFormula, yexprFormula, _reweight);
     });
 
   if (printLevel_ > 1) {
     std::cout << "\nAdding Plot " << _hist->GetName() << " with expression " << _yexpr << ":" << _xexpr << std::endl;
     if (_cutName != nullptr && std::strlen(_cutName) != 0)
       std::cout << " Cut: " << _cutName << std::endl;
-    if (_reweight != nullptr && std::strlen(_reweight) != 0)
-      std::cout << " Reweight: " << _reweight << std::endl;
+    if (_rwgt != nullptr && std::strlen(_rwgt) != 0)
+      std::cout << " Rwgt: " << _rwgt << std::endl;
   }
 
-  return static_cast<Plot2DFiller&>(addObj_(_cutName, _reweight, newPlot2D));
+  return static_cast<Plot2DFiller&>(addObj_(_cutName, _rwgt, newPlot2D));
 }
 
 multidraw::TreeFiller&
-multidraw::MultiDraw::addTree(TTree* _tree, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/)
+multidraw::MultiDraw::addTree(TTree* _tree, char const* _cutName/* = ""*/, char const* _rwgt/* = ""*/)
 {
-  auto newTree([this, _tree](TTreeFormulaCachedPtr const& _reweightFormula)->ExprFiller* {
-      return new TreeFiller(*_tree, this->library_, _reweightFormula);
+  auto newTree([this, _tree](Reweight const& _reweight)->ExprFiller* {
+      return new TreeFiller(*_tree, this->library_, _reweight);
     });
 
   if (printLevel_ > 1) {
     std::cout << "\nAdding Tree " << _tree->GetName() << std::endl;
     if (_cutName != nullptr && std::strlen(_cutName) != 0)
       std::cout << " Cut: " << _cutName << std::endl;
-    if (_reweight != nullptr && std::strlen(_reweight) != 0)
-      std::cout << " Reweight: " << _reweight << std::endl;
+    if (_rwgt != nullptr && std::strlen(_rwgt) != 0)
+      std::cout << " Rwgt: " << _rwgt << std::endl;
   }
 
-  return static_cast<TreeFiller&>(addObj_(_cutName, _reweight, newTree));
+  return static_cast<TreeFiller&>(addObj_(_cutName, _rwgt, newTree));
 }
 
 multidraw::ExprFiller&
@@ -276,11 +217,11 @@ multidraw::MultiDraw::addObj_(TString const& _cutName, char const* _reweight, Ob
 {
   auto& cut(findCut_(_cutName));
 
-  TTreeFormulaCachedPtr reweightFormula(nullptr);
+  Reweight reweight;
   if (_reweight != nullptr && std::strlen(_reweight) != 0)
-    reweightFormula = library_.getFormula(_reweight);
+    reweight.set(library_.getFormula(_reweight));
 
-  auto* filler(_gen(reweightFormula));
+  auto* filler(_gen(reweight));
 
   cut.addFiller(*filler);
 
@@ -320,9 +261,6 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
   totalEvents_ = 0;
 
   if (inputMultiplexing_ > 1) {
-    if (treeReweight_.size() != 0 || globalReweight_.isValid())
-      throw std::runtime_error("Cannot multiplex input when tree reweights are set.");
-    
     if (printLevel_ > 0)
       std::cout << "Fetching the total number of events to split the input " << inputMultiplexing_ << " ways" << std::endl;
 
@@ -463,6 +401,8 @@ multidraw::MultiDraw::executeOne_(long _nEntries, long _firstEntry, unsigned _tr
 
   FormulaLibrary* library{nullptr};
   std::vector<Cut*> cuts;
+  Reweight globalReweight;
+  std::map<unsigned, std::pair<Reweight, bool>> treeReweights;
 
   if (&_tree == &tree_) {
     // main thread
@@ -484,6 +424,9 @@ multidraw::MultiDraw::executeOne_(long _nEntries, long _firstEntry, unsigned _tr
       if (doTimeProfile)
         cutTimers.emplace_back(SteadyClock::duration::zero());
     }
+
+    globalReweight = globalReweight_;
+    treeReweights = treeReweights_;
   }
   else {
     // side threads - need to recreate the entire formula library for the given tree
@@ -498,13 +441,13 @@ multidraw::MultiDraw::executeOne_(long _nEntries, long _firstEntry, unsigned _tr
       if (iC != 0 && origCut->getNFillers() == 0)
         continue;
 
-      auto& origFormula(origCut->getFormula());
+      auto* origFormula(origCut->getFormula());
 
       Cut* cut(nullptr);
-      if (origFormula.isFormula())
-        cut = new Cut(origCut->getName(), library->getFormula(origFormula.getExpression()));
+      if (origFormula == nullptr)
+        cut = new Cut(origCut->getName());
       else
-        cut = new Cut(origCut->getName(), origFormula.getInstanceVal(), origFormula.getNData());
+        cut = new Cut(origCut->getName(), library->getFormula(origFormula->GetTitle()));
 
       for (unsigned iF(0); iF != origCut->getNFillers(); ++iF) {
         auto* filler(origCut->getFiller(iF));
@@ -515,6 +458,12 @@ multidraw::MultiDraw::executeOne_(long _nEntries, long _firstEntry, unsigned _tr
     
       cuts.push_back(cut);
     }
+
+    globalReweight = globalReweight_.threadClone(*library);
+    for (auto& tr : treeReweights_) {
+      if (tr.first >= _treeNumberOffset)
+        treeReweights.emplace(tr.first, std::pair<Reweight, bool>(tr.second.first.threadClone(*library), tr.second.second));
+    }    
 
     // tell the main thread to go ahead with initializing the next thread
     _synchTools->flag = true;
@@ -547,7 +496,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, long _firstEntry, unsigned _tr
   TBranch* evtNumBranch(nullptr);
 
   double treeWeight(1.);
-  Evaluable* treeReweight{nullptr};
+  Reweight* treeReweight{nullptr};
   bool exclusiveTreeReweight(false);
 
   long printEvery(100000);
@@ -645,21 +594,17 @@ multidraw::MultiDraw::executeOne_(long _nEntries, long _firstEntry, unsigned _tr
       for (auto& ff : *library)
         ff.second->UpdateFormulaLeaves();
 
-      auto wItr(treeWeight_.find(treeNumber + _treeNumberOffset));
-      if (wItr == treeWeight_.end())
+      auto wItr(treeWeights_.find(treeNumber + _treeNumberOffset));
+      if (wItr == treeWeights_.end())
         treeWeight = globalWeight_;
       else if (wItr->second.second) // exclusive tree-by-tree weight
         treeWeight = wItr->second.first;
       else
         treeWeight = globalWeight_ * wItr->second.first;
 
-      auto rItr(treeReweight_.find(treeNumber + _treeNumberOffset));
-      if (rItr == treeReweight_.end()) {
-        if (globalReweight_.isValid())
-          treeReweight = &globalReweight_;
-        else
-          treeReweight = nullptr;
-
+      auto rItr(treeReweights.find(treeNumber + _treeNumberOffset));
+      if (rItr == treeReweights.end()) {
+        treeReweight = &globalReweight;
         exclusiveTreeReweight = true;
       }
       else {
@@ -713,26 +658,17 @@ multidraw::MultiDraw::executeOne_(long _nEntries, long _firstEntry, unsigned _tr
 
     double commonWeight(getWeight() * treeWeight);
 
-    if (treeReweight != nullptr) {
-      unsigned nD(treeReweight->getNdata());
-      if (nD == 0)
-        continue; // skip event
+    unsigned nD(treeReweight->getNdata());
+    if (nD == 0)
+      continue; // skip event
 
-      if (!exclusiveTreeReweight && globalReweight_.isValid()) {
-        // just to load the values
-        globalReweight_.getNdata();
-      }
+    eventWeights.resize(nD);
 
-      eventWeights.resize(nD);
-
-      for (unsigned iD(0); iD != nD; ++iD) {
-        eventWeights[iD] = treeReweight->evalInstance(iD) * commonWeight;
-        if (!exclusiveTreeReweight && globalReweight_.isValid())
-          eventWeights[iD] *= globalReweight_.evalInstance(iD);
-      }
+    for (unsigned iD(0); iD != nD; ++iD) {
+      eventWeights[iD] = treeReweight->evaluate(iD) * commonWeight;
+      if (!exclusiveTreeReweight)
+        eventWeights[iD] *= globalReweight.evaluate(iD);
     }
-    else
-      eventWeights.assign(1, commonWeight);
 
     if (printLevel > 3) {
       std::cout << "         Global weights: ";

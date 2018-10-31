@@ -2,6 +2,7 @@
 #define multidraw_ExprFiller_h
 
 #include "TTreeFormulaCached.h"
+#include "Reweight.h"
 
 #include "TString.h"
 
@@ -18,7 +19,7 @@ namespace multidraw {
    */
   class ExprFiller {
   public:
-    ExprFiller(TTreeFormulaCachedPtr const& reweight = nullptr);
+    ExprFiller(Reweight const& reweight);
     ExprFiller(ExprFiller const&);
     virtual ~ExprFiller() {}
 
@@ -40,7 +41,7 @@ namespace multidraw {
     void setClone() { isClone_ = true; }
 
     std::vector<TTreeFormulaCachedPtr> exprs_{};
-    TTreeFormulaCachedPtr reweight_{nullptr};
+    Reweight reweight_{};
     double entryWeight_{1.};
     unsigned counter_{0};
 

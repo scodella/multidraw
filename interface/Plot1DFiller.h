@@ -1,7 +1,6 @@
 #ifndef multidraw_Plot1DFiller_h
 #define multidraw_Plot1DFiller_h
 
-#include "TTreeFormulaCached.h"
 #include "ExprFiller.h"
 
 #include "TH1.h"
@@ -27,7 +26,7 @@ namespace multidraw {
       kMergeLast
     };
 
-    Plot1DFiller(TH1& hist, TTreeFormulaCachedPtr const& expr, TTreeFormulaCachedPtr const& reweight = nullptr, OverflowMode mode = kDefault);
+    Plot1DFiller(TH1& hist, TTreeFormulaCachedPtr const& expr, Reweight const& reweight, OverflowMode mode = kDefault);
     Plot1DFiller(Plot1DFiller const&);
     ~Plot1DFiller();
 
