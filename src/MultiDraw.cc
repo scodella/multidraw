@@ -313,6 +313,7 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
         threadFirstEntry = firstEntry - n;
 
         threadElist = new TEntryList(tree);
+        threadElist->SetDirectory(nullptr);
       }
 
       auto* fileElements(tree_.GetListOfFiles());
