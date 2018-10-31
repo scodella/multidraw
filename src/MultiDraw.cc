@@ -378,7 +378,7 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
       }
 
       auto* fileElements(tree_.GetListOfFiles());
-      for (unsigned iS(treeNumberOffset); iS != fileElements->GetEntries(); ++iS) {
+      for (int iS(treeNumberOffset); iS != fileElements->GetEntries(); ++iS) {
         TString fileName(fileElements->At(iS)->GetTitle());
         tree->Add(fileName);
         if (threadElist != nullptr)
