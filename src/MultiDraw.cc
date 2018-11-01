@@ -278,6 +278,11 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
       // If there are more trees than threads and we are not limiting the number of entries to process,
       // we can split by file and avoid having to open all files up front with GetEntries.
 
+      if (printLevel_ > 0) {
+        std::cout << "Splitting task over " << tree_.GetNtrees();
+        std::cout << " files in " << inputMultiplexing_ << " threads" << std::endl;
+      }
+
       auto threadTask([this, &synchTools](unsigned _treeNumberOffset, TChain* _tree) {
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
           this->executeOne_(-1, 0, _treeNumberOffset, *_tree, nullptr, &synchTools, true);
@@ -622,9 +627,9 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, uns
 
       if (printLevel >= 0) {
         if (_synchTools == nullptr)
-          std::cout << "\r      " << iEntry << " events";
+          (std::cout << "\r      " << iEntry << " events").flush();
         else
-          std::cout << "\r      " << _synchTools->totalEvents.load() << " events";
+          (std::cout << "\r      " << _synchTools->totalEvents.load() << " events").flush();
 
         if (printLevel > 2)
           std::cout << std::endl;
