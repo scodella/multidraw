@@ -256,7 +256,7 @@ multidraw::MultiDraw::numObjs() const
 }
 
 void
-multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
+multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry/* = 0*/)
 {
   totalEvents_ = 0;
 
@@ -264,96 +264,160 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, long _firstEntry/* = 0*/)
     if (printLevel_ > 0)
       std::cout << "Fetching the total number of events to split the input " << inputMultiplexing_ << " ways" << std::endl;
 
-    // This step also fills the offsets array of the TChain
-    long long nTotal(tree_.GetEntries() - _firstEntry);
-
     auto* elist(tree_.GetEntryList());
-    if (elist != nullptr)
-      nTotal = elist->GetN() - _firstEntry;
-
-    if (_nEntries >= 0 && _nEntries < nTotal)
-      nTotal = _nEntries;
-
-    if (nTotal <= _firstEntry)
-      return;
-
-    long long nPerJob(nTotal / inputMultiplexing_);
-
-    Long64_t* treeOffsets(tree_.GetTreeOffset());
-
-    SynchTools synchTools;
-
-#if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
-    // treeOffsets are used in executeOne_ to identify tree transitions and lock the thread
-    auto threadTask([this, nPerJob, treeOffsets, &synchTools](long _fE, unsigned _treeNumberOffset, TTree* _tree) {
-       this->executeOne_(nPerJob, _fE, _treeNumberOffset, *_tree, treeOffsets, &synchTools);
-    });
-#else
-    // Newer versions of ROOT is more thread-safe and does not require this lock
-    auto threadTask([this, nPerJob, &synchTools](long _fE, unsigned _treeNumberOffset, TTree* _tree) {
-      this->executeOne_(nPerJob, _fE, _treeNumberOffset, *_tree, &synchTools);
-    });
-#endif
 
     std::vector<TChain*> trees;
     std::vector<std::thread*> threads;
-    long firstEntry(_firstEntry); // first entry in the full chain
-    for (unsigned iT(0); iT != inputMultiplexing_ - 1; ++iT) {
-      auto* tree(new TChain(tree_.GetName()));
 
-      unsigned treeNumberOffset(0);
-      long threadFirstEntry(0);
-      TEntryList* threadElist{nullptr};
+    SynchTools synchTools;
 
-      if (elist == nullptr) {
-        while (firstEntry >= treeOffsets[treeNumberOffset + 1])
-          ++treeNumberOffset;
+    if (_nEntries == -1 && _firstEntry == 0 && tree_.GetNtrees() > int(inputMultiplexing_)) {
+      // If there are more trees than threads and we are not limiting the number of entries to process,
+      // we can split by file and avoid having to open all files up front with GetEntries.
 
-        threadFirstEntry = firstEntry - treeOffsets[treeNumberOffset];
-      }
-      else {
-        long long n(0);
-        for (auto* obj : *elist->GetLists()) {
-          auto* el(static_cast<TEntryList*>(obj));
-          if (firstEntry < n + el->GetN())
-            break;
-          ++treeNumberOffset;
-          n += el->GetN();
+      auto threadTask([this, &synchTools](unsigned _treeNumberOffset, TChain* _tree) {
+#if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
+          this->executeOne_(-1, 0, _treeNumberOffset, *_tree, nullptr, &synchTools, true);
+#else
+          this->executeOne_(-1, 0, _treeNumberOffset, *_tree, &synchTools, true);
+#endif
+      });
+
+      unsigned nFilesPerThread(tree_.GetNtrees() / inputMultiplexing_);
+      // main thread processes the residuals too
+      unsigned nFilesMainThread(tree_.GetNtrees() - nFilesPerThread * (inputMultiplexing_ - 1));
+
+      for (unsigned iT(0); iT != inputMultiplexing_ - 1; ++iT) {
+        auto* tree(new TChain(tree_.GetName()));
+
+        unsigned treeNumberOffset(nFilesMainThread + iT * nFilesPerThread);
+        TEntryList* threadElist{nullptr};
+
+        if (elist != nullptr) {
+          threadElist = new TEntryList(tree);
+          threadElist->SetDirectory(nullptr);
         }
 
-        threadFirstEntry = firstEntry - n;
+        auto* fileElements(tree_.GetListOfFiles());
+        for (unsigned iS(treeNumberOffset); iS != treeNumberOffset + nFilesPerThread; ++iS) {
+          TString fileName(fileElements->At(iS)->GetTitle());
+          tree->Add(fileName);
+          if (threadElist != nullptr)
+            threadElist->Add(elist->GetEntryList(tree_.GetName(), fileName));
+        }
 
-        threadElist = new TEntryList(tree);
-        threadElist->SetDirectory(nullptr);
-      }
-
-      auto* fileElements(tree_.GetListOfFiles());
-      for (int iS(treeNumberOffset); iS != fileElements->GetEntries(); ++iS) {
-        TString fileName(fileElements->At(iS)->GetTitle());
-        tree->Add(fileName);
         if (threadElist != nullptr)
-          threadElist->Add(elist->GetEntryList(tree_.GetName(), fileName));
+          tree->SetEntryList(threadElist);
+
+        threads.push_back(new std::thread(threadTask, treeNumberOffset, tree));
+        trees.push_back(tree);
+
+        std::unique_lock<std::mutex> lock(synchTools.mutex);
+        synchTools.condition.wait(lock, [&synchTools]() { return synchTools.flag.load(); });
+
+        synchTools.flag = false;
       }
 
-      if (threadElist != nullptr)
-        tree->SetEntryList(threadElist);
-
-      threads.push_back(new std::thread(threadTask, threadFirstEntry, treeNumberOffset, tree));
-      trees.push_back(tree);
-
-      std::unique_lock<std::mutex> lock(synchTools.mutex);
-      synchTools.condition.wait(lock, [&synchTools]() { return synchTools.flag.load(); });
-
-      synchTools.flag = false;
-
-      firstEntry += nPerJob;
-    }
+      // Started N-1 threads. Process the rest of events in the main thread
 
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
-    executeOne_(nTotal - (firstEntry - _firstEntry), firstEntry, 0, tree_, treeOffsets, &synchTools);
+      executeOne_(nFilesMainThread, 0, 0, tree_, nullptr, &synchTools, true);
 #else
-    executeOne_(nTotal - (firstEntry - _firstEntry), firstEntry, 0, tree_, &synchTools);
+      executeOne_(nFilesMainThread, 0, 0, tree_, &synchTools, true);
 #endif
+    }
+    else{
+      // If there are only a few files or if we are limiting the entries, we need to know how many
+      // events are in each file
+
+      // This step also fills the offsets array of the TChain
+      long long nTotal(tree_.GetEntries() - _firstEntry);
+
+      if (elist != nullptr)
+        nTotal = elist->GetN() - _firstEntry;
+
+      if (_nEntries >= 0 && _nEntries < nTotal)
+        nTotal = _nEntries;
+
+      if (nTotal <= _firstEntry)
+        return;
+
+      long long nPerThread(nTotal / inputMultiplexing_);
+
+      Long64_t* treeOffsets(tree_.GetTreeOffset());
+
+#if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
+      // treeOffsets are used in executeOne_ to identify tree transitions and lock the thread
+      auto threadTask([this, nPerThread, treeOffsets, &synchTools](long _fE, unsigned _treeNumberOffset, TChain* _tree) {
+          this->executeOne_(nPerThread, _fE, _treeNumberOffset, *_tree, treeOffsets, &synchTools);
+      });
+#else
+      // Newer versions of ROOT is more thread-safe and does not require this lock
+      auto threadTask([this, nPerThread, &synchTools](long _fE, unsigned _treeNumberOffset, TChain* _tree) {
+          this->executeOne_(nPerThread, _fE, _treeNumberOffset, *_tree, &synchTools);
+      });
+#endif
+
+      long firstEntry(_firstEntry); // first entry in the full chain
+      for (unsigned iT(0); iT != inputMultiplexing_ - 1; ++iT) {
+        auto* tree(new TChain(tree_.GetName()));
+
+        unsigned treeNumberOffset(0);
+        long threadFirstEntry(0);
+        TEntryList* threadElist{nullptr};
+
+        if (elist == nullptr) {
+          while (firstEntry >= treeOffsets[treeNumberOffset + 1])
+            ++treeNumberOffset;
+
+          threadFirstEntry = firstEntry - treeOffsets[treeNumberOffset];
+        }
+        else {
+          long long n(0);
+          for (auto* obj : *elist->GetLists()) {
+            auto* el(static_cast<TEntryList*>(obj));
+            if (firstEntry < n + el->GetN())
+              break;
+            ++treeNumberOffset;
+            n += el->GetN();
+          }
+
+          threadFirstEntry = firstEntry - n;
+
+          threadElist = new TEntryList(tree);
+          threadElist->SetDirectory(nullptr);
+        }
+
+        auto* fileElements(tree_.GetListOfFiles());
+        for (int iS(treeNumberOffset); iS != fileElements->GetEntries(); ++iS) {
+          TString fileName(fileElements->At(iS)->GetTitle());
+          tree->Add(fileName);
+          if (threadElist != nullptr)
+            threadElist->Add(elist->GetEntryList(tree_.GetName(), fileName));
+        }
+
+        if (threadElist != nullptr)
+          tree->SetEntryList(threadElist);
+
+        threads.push_back(new std::thread(threadTask, threadFirstEntry, treeNumberOffset, tree));
+        trees.push_back(tree);
+
+        std::unique_lock<std::mutex> lock(synchTools.mutex);
+        synchTools.condition.wait(lock, [&synchTools]() { return synchTools.flag.load(); });
+
+        synchTools.flag = false;
+
+        firstEntry += nPerThread;
+      }
+
+      // Started N-1 threads. Process the rest of events in the main thread
+
+#if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
+      executeOne_(nTotal - (firstEntry - _firstEntry), firstEntry, 0, tree_, treeOffsets, &synchTools);
+#else
+      executeOne_(nTotal - (firstEntry - _firstEntry), firstEntry, 0, tree_, &synchTools);
+#endif
+    }
 
     synchTools.flag = true;
     synchTools.condition.notify_all();
@@ -414,11 +478,13 @@ double millisec(SteadyClock::duration const& interval)
 
 long
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
-multidraw::MultiDraw::executeOne_(long _nEntries, long _firstEntry, unsigned _treeNumberOffset, TTree& _tree, Long64_t* _treeOffsets/* = nullptr*/, SynchTools* _synchTools/* = nullptr*/)
+multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, unsigned _treeNumberOffset, TChain& _tree, Long64_t* _treeOffsets/* = nullptr*/, SynchTools* _synchTools/* = nullptr*/, bool _byTree/* = false*/)
 #else
-multidraw::MultiDraw::executeOne_(long _nEntries, long _firstEntry, unsigned _treeNumberOffset, TTree& _tree, SynchTools* _synchTools/* = nullptr*/)
+multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, unsigned _treeNumberOffset, TChain& _tree, SynchTools* _synchTools/* = nullptr*/, bool _byTree/* = false*/)
 #endif
 {
+  // treeNumberOffset: The offset of the given tree with respect to the original
+
   std::vector<SteadyClock::duration> cutTimers;
   SteadyClock::duration ioTimer(SteadyClock::duration::zero());
   SteadyClock::duration eventTimer(SteadyClock::duration::zero());
@@ -528,8 +594,23 @@ multidraw::MultiDraw::executeOne_(long _nEntries, long _firstEntry, unsigned _tr
   bool exclusiveTreeReweight(false);
 
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
+  Long64_t* treeOffsets(nullptr);
+
+  if (_byTree) {
+    // Jobs split by tree; tree offsets have not been calculated in the main thread
+    _tree.GetEntries();
+    treeOffsets = _tree.GetTreeOffset();
+  }
+  else {
+    // nextTreeBoundary = _treeOffsets[_treeNumberOffset + treeNumber + 1] - _treeOffsets[_treeNumberOffset]
+    //                  = treeOffsets[treeNumber + 1] - treeOffsets[0]
+    treeOffsets = &(_treeOffsets[_treeNumberOffset]);
+  }
+
   long nextTreeBoundary(0);
 #endif
+
+  long nEntries(_byTree ? -1 : _nEntries);
 
   long printEvery(100000);
   if (printLevel_ == 3)
@@ -537,7 +618,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, long _firstEntry, unsigned _tr
   else if (printLevel_ >= 4)
     printEvery = 1;
   
-  while (iEntry != _nEntries) {
+  while (iEntry != nEntries) {
     if (iEntry % printEvery == 0) {
       if (_synchTools != nullptr)
         _synchTools->totalEvents += printEvery;
@@ -564,7 +645,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, long _firstEntry, unsigned _tr
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
     long long iLocalEntry(0);
     
-    if (_treeOffsets != nullptr && iEntryNumber >= nextTreeBoundary) {
+    if (treeOffsets != nullptr && iEntryNumber >= nextTreeBoundary) {
       // we are crossing a tree boundary in a multi-thread environment
       std::lock_guard<std::mutex> lock(_synchTools->mutex);
       iLocalEntry = _tree.LoadTree(iEntryNumber);
@@ -583,13 +664,18 @@ multidraw::MultiDraw::executeOne_(long _nEntries, long _firstEntry, unsigned _tr
     ++iEntry;
 
     if (treeNumber != _tree.GetTreeNumber()) {
+      if (_byTree && _nEntries >= 0 && _tree.GetTreeNumber() >= _nEntries) {
+        // We are done
+        break;
+      }
+
       if (printLevel > 1)
         std::cout << "      Opened a new file: " << _tree.GetCurrentFile()->GetName() << std::endl;
 
       treeNumber = _tree.GetTreeNumber();
 
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
-      nextTreeBoundary = _treeOffsets[_treeNumberOffset + treeNumber + 1] - _treeOffsets[_treeNumberOffset];
+      nextTreeBoundary = treeOffsets[treeNumber + 1] - treeOffsets[0];
 #endif
 
       if (weightBranchName_.Length() != 0) {

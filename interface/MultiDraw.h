@@ -100,7 +100,7 @@ namespace multidraw {
     TreeFiller& addTree(TTree* tree, char const* cutName = "", char const* reweight = "");
 
     //! Run and fill the plots and trees.
-    void execute(long nEntries = -1, long firstEntry = 0);
+    void execute(long nEntries = -1, unsigned long firstEntry = 0);
 
     //! Set input tree multiplexing.
     /*
@@ -146,10 +146,15 @@ namespace multidraw {
       std::atomic_ullong totalEvents{0};
     };
 
+    //! Core of the execute function
+    /*
+      treeNumberOffset: The offset of the given tree with respect to the original
+      byTree: If true, nEntries refers to file numbers in the given tree, not events
+     */
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
-    long executeOne_(long nEntries, long firstEntry, unsigned treeNumberOffset, TTree&, Long64_t* treeOffsets = nullptr, SynchTools* = nullptr);
+    long executeOne_(long nEntries, unsigned long firstEntry, unsigned treeNumberOffset, TChain&, Long64_t* treeOffsets = nullptr, SynchTools* = nullptr, bool byTree = false);
 #else
-    long executeOne_(long nEntries, long firstEntry, unsigned treeNumberOffset, TTree&, SynchTools* = nullptr);
+    long executeOne_(long nEntries, unsigned long firstEntry, unsigned treeNumberOffset, TChain&, SynchTools* = nullptr, bool byTree = false);
 #endif
 
     TChain tree_;
