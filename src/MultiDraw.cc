@@ -260,16 +260,19 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
 {
   totalEvents_ = 0;
 
-  if (inputMultiplexing_ > 1) {
-    if (printLevel_ > 0)
-      std::cout << "Fetching the total number of events to split the input " << inputMultiplexing_ << " ways" << std::endl;
+  if (inputMultiplexing_ <= 1) {
+    // Single-thread execution
 
-    auto* elist(tree_.GetEntryList());
+    totalEvents_ = executeOne_(_nEntries, _firstEntry, 0, tree_);
+  }
+  else {
+    // Multi-thread execution
 
     std::vector<TChain*> trees;
     std::vector<std::thread*> threads;
-
     SynchTools synchTools;
+
+    auto* elist(tree_.GetEntryList());
 
     if (_nEntries == -1 && _firstEntry == 0 && tree_.GetNtrees() > int(inputMultiplexing_)) {
       // If there are more trees than threads and we are not limiting the number of entries to process,
@@ -330,13 +333,18 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
       // If there are only a few files or if we are limiting the entries, we need to know how many
       // events are in each file
 
+      if (printLevel_ > 0) {
+        std::cout << "Fetching the total number of events from " << tree_.GetNtrees();
+        std::cout << " files to split the input " << inputMultiplexing_ << " ways" << std::endl;
+      }
+
       // This step also fills the offsets array of the TChain
-      long long nTotal(tree_.GetEntries() - _firstEntry);
+      unsigned long long nTotal(tree_.GetEntries() - _firstEntry);
 
       if (elist != nullptr)
         nTotal = elist->GetN() - _firstEntry;
 
-      if (_nEntries >= 0 && _nEntries < nTotal)
+      if (_nEntries >= 0 && _nEntries < (long long)(nTotal))
         nTotal = _nEntries;
 
       if (nTotal <= _firstEntry)
@@ -436,17 +444,6 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
     }
 
     totalEvents_ = synchTools.totalEvents;
-  }
-  else {
-    unsigned treeNumberOffset(0);
-
-    if (_firstEntry > 0) {
-      tree_.GetEntries();
-      while (_firstEntry >= tree_.GetTreeOffset()[treeNumberOffset + 1])
-        ++treeNumberOffset;
-    }
-
-    totalEvents_ = executeOne_(_nEntries, _firstEntry, treeNumberOffset, tree_);
   }
 
   if (printLevel_ >= 0) {
