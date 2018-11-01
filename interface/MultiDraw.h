@@ -146,7 +146,11 @@ namespace multidraw {
       std::atomic_ullong totalEvents{0};
     };
 
+#if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
+    long executeOne_(long nEntries, long firstEntry, unsigned treeNumberOffset, TTree&, Long64_t* treeOffsets = nullptr, SynchTools* = nullptr);
+#else
     long executeOne_(long nEntries, long firstEntry, unsigned treeNumberOffset, TTree&, SynchTools* = nullptr);
+#endif
 
     TChain tree_;
     std::vector<TChain*> friendTrees_{};
