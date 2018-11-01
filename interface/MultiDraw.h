@@ -152,9 +152,9 @@ namespace multidraw {
       byTree: If true, nEntries refers to file numbers in the given tree, not events
      */
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
-    long executeOne_(long nEntries, unsigned long firstEntry, unsigned treeNumberOffset, TChain&, Long64_t* treeOffsets = nullptr, SynchTools* = nullptr, bool byTree = false);
+    long executeOne_(long nEntries, unsigned long firstEntry, TChain&, unsigned treeNumberOffset = 0, Long64_t* treeOffsets = nullptr, SynchTools* = nullptr, bool byTree = false);
 #else
-    long executeOne_(long nEntries, unsigned long firstEntry, unsigned treeNumberOffset, TChain&, SynchTools* = nullptr, bool byTree = false);
+    long executeOne_(long nEntries, unsigned long firstEntry, TChain&, unsigned treeNumberOffset = 0, SynchTools* = nullptr, bool byTree = false);
 #endif
 
     TChain tree_;

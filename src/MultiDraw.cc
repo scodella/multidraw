@@ -263,7 +263,7 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
   if (inputMultiplexing_ <= 1) {
     // Single-thread execution
 
-    totalEvents_ = executeOne_(_nEntries, _firstEntry, 0, tree_);
+    totalEvents_ = executeOne_(_nEntries, _firstEntry, tree_);
   }
   else {
     // Multi-thread execution
@@ -285,9 +285,9 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
 
       auto threadTask([this, &synchTools](unsigned _treeNumberOffset, TChain* _tree) {
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
-          this->executeOne_(-1, 0, _treeNumberOffset, *_tree, nullptr, &synchTools, true);
+          this->executeOne_(-1, 0, *_tree, _treeNumberOffset, nullptr, &synchTools, true);
 #else
-          this->executeOne_(-1, 0, _treeNumberOffset, *_tree, &synchTools, true);
+          this->executeOne_(-1, 0, *_tree, _treeNumberOffset, &synchTools, true);
 #endif
       });
 
@@ -329,9 +329,9 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
       // Started N-1 threads. Process the rest of events in the main thread
 
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
-      executeOne_(nFilesMainThread, 0, 0, tree_, nullptr, &synchTools, true);
+      executeOne_(nFilesMainThread, 0, tree_, 0, nullptr, &synchTools, true);
 #else
-      executeOne_(nFilesMainThread, 0, 0, tree_, &synchTools, true);
+      executeOne_(nFilesMainThread, 0, tree_, 0, &synchTools, true);
 #endif
     }
     else{
@@ -362,12 +362,12 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
       // treeOffsets are used in executeOne_ to identify tree transitions and lock the thread
       auto threadTask([this, nPerThread, treeOffsets, &synchTools](long _fE, unsigned _treeNumberOffset, TChain* _tree) {
-          this->executeOne_(nPerThread, _fE, _treeNumberOffset, *_tree, treeOffsets, &synchTools);
+          this->executeOne_(nPerThread, _fE, *_tree, _treeNumberOffset, treeOffsets, &synchTools);
       });
 #else
       // Newer versions of ROOT is more thread-safe and does not require this lock
       auto threadTask([this, nPerThread, &synchTools](long _fE, unsigned _treeNumberOffset, TChain* _tree) {
-          this->executeOne_(nPerThread, _fE, _treeNumberOffset, *_tree, &synchTools);
+          this->executeOne_(nPerThread, _fE, *_tree, _treeNumberOffset, &synchTools);
       });
 #endif
 
@@ -426,9 +426,9 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
       // Started N-1 threads. Process the rest of events in the main thread
 
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
-      executeOne_(nTotal - (firstEntry - _firstEntry), firstEntry, 0, tree_, treeOffsets, &synchTools);
+      executeOne_(nTotal - (firstEntry - _firstEntry), firstEntry, tree_, 0, treeOffsets, &synchTools);
 #else
-      executeOne_(nTotal - (firstEntry - _firstEntry), firstEntry, 0, tree_, &synchTools);
+      executeOne_(nTotal - (firstEntry - _firstEntry), firstEntry, tree_, 0, &synchTools);
 #endif
     }
 
@@ -480,9 +480,9 @@ double millisec(SteadyClock::duration const& interval)
 
 long
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
-multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, unsigned _treeNumberOffset, TChain& _tree, Long64_t* _treeOffsets/* = nullptr*/, SynchTools* _synchTools/* = nullptr*/, bool _byTree/* = false*/)
+multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TChain& _tree, unsigned _treeNumberOffset/* = 0*/, Long64_t* _treeOffsets/* = nullptr*/, SynchTools* _synchTools/* = nullptr*/, bool _byTree/* = false*/)
 #else
-multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, unsigned _treeNumberOffset, TChain& _tree, SynchTools* _synchTools/* = nullptr*/, bool _byTree/* = false*/)
+multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TChain& _tree, unsigned _treeNumberOffset/* = 0*/, SynchTools* _synchTools/* = nullptr*/, bool _byTree/* = false*/)
 #endif
 {
   // treeNumberOffset: The offset of the given tree with respect to the original
@@ -598,15 +598,17 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, uns
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
   Long64_t* treeOffsets(nullptr);
 
-  if (_byTree) {
-    // Jobs split by tree; tree offsets have not been calculated in the main thread
-    _tree.GetEntries();
-    treeOffsets = _tree.GetTreeOffset();
-  }
-  else {
-    // nextTreeBoundary = _treeOffsets[_treeNumberOffset + treeNumber + 1] - _treeOffsets[_treeNumberOffset]
-    //                  = treeOffsets[treeNumber + 1] - treeOffsets[0]
-    treeOffsets = &(_treeOffsets[_treeNumberOffset]);
+  if (_treeOffsets != nullptr) {
+    if (_byTree) {
+      // Jobs split by tree; tree offsets have not been calculated in the main thread
+      _tree.GetEntries();
+      treeOffsets = _tree.GetTreeOffset();
+    }
+    else {
+      // nextTreeBoundary = _treeOffsets[_treeNumberOffset + treeNumber + 1] - _treeOffsets[_treeNumberOffset]
+      //                  = treeOffsets[treeNumber + 1] - treeOffsets[0]
+      treeOffsets = &(_treeOffsets[_treeNumberOffset]);
+    }
   }
 
   long nextTreeBoundary(0);
@@ -677,7 +679,8 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, uns
       treeNumber = _tree.GetTreeNumber();
 
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
-      nextTreeBoundary = treeOffsets[treeNumber + 1] - treeOffsets[0];
+      if (treeOffsets != nullptr)
+        nextTreeBoundary = treeOffsets[treeNumber + 1] - treeOffsets[0];
 #endif
 
       if (weightBranchName_.Length() != 0) {
