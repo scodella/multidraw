@@ -260,6 +260,10 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
 {
   totalEvents_ = 0;
 
+  int abortLevel(gErrorAbortLevel);
+  if (doAbortOnReadError_)
+    gErrorAbortLevel = kError;
+
   if (inputMultiplexing_ <= 1) {
     // Single-thread execution
 
@@ -450,6 +454,9 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
 
     totalEvents_ = synchTools.totalEvents;
   }
+
+  if (doAbortOnReadError_)
+    gErrorAbortLevel = abortLevel;
 
   if (printLevel_ >= 0) {
     std::cout << "\r      " << totalEvents_ << " events" << std::endl;

@@ -127,6 +127,13 @@ namespace multidraw {
      */
     void setDoTimeProfile(bool d) { doTimeProfile_ = d; }
 
+    //! Abort if there is a read error.
+    /*
+     * By default, TChain skips files that cannot be opened or data blocks that cannot be read. When this
+     * flag is true, MultiDraw throws an exception upon file open error.
+     */
+    void setAbortOnReadError(bool a) { doAbortOnReadError_ = a; }
+
     long getTotalEvents() const { return totalEvents_; }
 
     unsigned numObjs() const;
@@ -174,7 +181,8 @@ namespace multidraw {
     std::map<unsigned, std::pair<Reweight, bool>> treeReweights_{};
 
     int printLevel_{0};
-    bool doTimeProfile_{0};
+    bool doTimeProfile_{false};
+    bool doAbortOnReadError_{false};
 
     long long totalEvents_{0};
   };
