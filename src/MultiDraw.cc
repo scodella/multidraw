@@ -408,8 +408,11 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
 #endif
     }
 
-    synchTools.flag = true;
-    synchTools.condition.notify_all();
+    {
+      std::unique_lock<std::mutex> lock(synchTools.mutex);
+      synchTools.flag = true;
+      synchTools.condition.notify_all();
+    }
 
     for (auto* thread : threads)
       thread->join();
@@ -477,8 +480,15 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
   FormulaLibrary library(_tree);
 
   // If we have custom-defined variables, must compile them before cuts and fillers refer to them
+  struct VariableSpec {
+    TString name;
+    unsigned nD{0};
+    std::vector<double> values{};
+    TTreeFormulaCachedPtr sourceFormula{};
+  };
+
   TTree* variablesTree(nullptr);
-  std::vector<std::tuple<unsigned, double, TTreeFormulaCachedPtr>> variables;
+  std::vector<VariableSpec> variables;
 
   auto compileVariables([&variablesTree, &variables, &library, &_tree, this]() {
       if (this->variables_.empty())
@@ -488,17 +498,21 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       variablesTree = new TTree("_variables", "");
       variablesTree->SetCircular(10000); // buffer size 10000 to have fewer cycles
 
-      variables.reserve(this->variables_.size());
+      variables.resize(this->variables_.size());
 
       for (unsigned iV(0); iV != this->variables_.size(); ++iV) {
         auto& name(this->variables_[iV].first);
         auto& expr(this->variables_[iV].second);
-        variables.emplace_back(0, 0., library.getFormula(expr));
+        variables[iV].name = name;
+        variables[iV].sourceFormula = library.getFormula(expr);
+
+        // give some reasonable initial size
+        variables[iV].values.reserve(64);
 
         // We always define the variables as variable-size arrays so that when the variable
         // is undefined in a tree entry we can set its Ndata to 0
-        variablesTree->Branch("size__" + name, &std::get<0>(variables.back()), "size__" + name + "/i");
-        variablesTree->Branch(name, &std::get<1>(variables.back()), name + "[size__" + name + "]/D");
+        variablesTree->Branch("size__" + name, &variables[iV].nD, "size__" + name + "/i");
+        variablesTree->Branch(name, variables[iV].values.data(), name + "[size__" + name + "]/D");
       }
 
       _tree.AddFriend(variablesTree);
@@ -779,9 +793,18 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
 
     if (variablesTree != nullptr) {
       for (auto& v : variables) {
-        std::get<0>(v) = std::get<2>(v)->GetNdata();
-        if (std::get<0>(v) == 1)
-          std::get<1>(v) = std::get<2>(v)->EvalInstance(0);
+        auto* currentData(v.values.data());
+        v.nD = v.sourceFormula->GetNdata();
+        v.values.resize(v.nD);
+
+        if (v.values.data() != currentData) {
+          // vector was reallocated
+          auto* br(variablesTree->GetBranch(v.name));
+          br->SetAddress(v.values.data());
+        }
+
+        for (unsigned iD(0); iD != v.nD; ++iD)
+          v.values[iD] = v.sourceFormula->EvalInstance(iD);
       }
       variablesTree->Fill();
       variablesTree->LoadTree(variablesTree->GetEntries() - 1);
