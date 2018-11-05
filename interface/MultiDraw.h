@@ -52,18 +52,28 @@ namespace multidraw {
 
     //! Add an input file.
     void addInputPath(char const* path) { tree_.Add(path); }
+
     //! Add a friend tree (not tested)
     void addFriend(char const* treeName, TObjArray const* paths);
+
     //! Apply an entry list.
     void applyEntryList(TEntryList* elist) { tree_.SetEntryList(elist); }
+
     //! Set the name and the C variable type of the weight branch. Pass an empty string to unset.
     void setWeightBranch(char const* bname) { weightBranchName_ = bname; }
+
     //! Set a global filtering cut. Events not passing this expression are not considered at all.
     void setFilter(char const* expr);
+
     //! Add a new cut.
     void addCut(char const* name, char const* expr);
+
+    //! Add a new variable, computed as a function of other branches
+    void addVariable(char const* name, char const* expr);
+
     //! Remove a cut.
     void removeCut(char const* name);
+
     //! Apply a constant weight (e.g. luminosity times cross section) to all events, possibly varying by input tree.
     /*
      * Tree number option is useful when e.g. running over multiple MC samples with different cross
@@ -73,6 +83,7 @@ namespace multidraw {
      * of the global one.
      */
     void setConstantWeight(double w, int treeNumber = -1, bool exclusive = true);
+
     //! Set an overall reweight, possibly varying by input tree.
     /*!
      * Reweight factor can be set in two ways. If the second argument is nullptr,
@@ -83,8 +94,10 @@ namespace multidraw {
      * sections in one shot.
      */
     void setReweight(char const* expr, TObject const* source = nullptr, int treeNumber = -1, bool exclusive = true);
+
     //! Set an overall reweight, possibly varying by input tree.
     void setReweight(Reweight const&, int treeNumber = -1, bool exclusive = true);
+
     //! Set a prescale factor
     /*!
      * When prescale_ > 1, only events that satisfy eventNumber % prescale_ == 0 are read.
@@ -92,10 +105,13 @@ namespace multidraw {
      * tree entry number is used otherwise.
      */
     void setPrescale(unsigned p, char const* evtNumBranch = "");
+
     //! Add a 1D histogram to fill.
     Plot1DFiller& addPlot(TH1* hist, char const* expr, char const* cutName = "", char const* reweight = "", Plot1DFiller::OverflowMode mode = Plot1DFiller::kDefault);
+
     //! Add a 2D histogram to fill.
     Plot2DFiller& addPlot2D(TH2* hist, char const* xexpr, char const* yexpr, char const* cutName = "", char const* reweight = "");
+
     //! Add a tree to fill.
     TreeFiller& addTree(TTree* tree, char const* cutName = "", char const* reweight = "");
 
@@ -173,6 +189,7 @@ namespace multidraw {
     unsigned prescale_{1};
 
     std::vector<Cut*> cuts_;
+    std::vector<std::pair<TString, TString>> variables_;
     FormulaLibrary library_;
 
     double globalWeight_{1.};

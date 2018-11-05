@@ -88,6 +88,17 @@ multidraw::MultiDraw::addCut(char const* _name, char const* _expr)
 }
 
 void
+multidraw::MultiDraw::addVariable(char const* _name, char const* _expr)
+{
+  if (_name == nullptr || std::strlen(_name) == 0)
+    throw std::invalid_argument("Cannot add a variable with no name");
+  if (tree_.GetBranch(_name) != nullptr)
+    throw std::invalid_argument(TString::Format("Branch with name %s already exists", _name).Data());
+
+  variables_.emplace_back(_name, _expr);
+}
+
+void
 multidraw::MultiDraw::removeCut(char const* _name)
 {
   if (_name == nullptr || std::strlen(_name) == 0)
@@ -573,6 +584,23 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     _synchTools->condition.notify_one();
   }
 
+  TTree* variablesTree(nullptr);
+  std::vector<std::pair<double, TTreeFormulaPtr>> variables;
+  if (!variables_.empty()) {
+    TDirectory::TContext(nullptr);
+    variablesTree = new TTree("_variables", "");
+    variablesTree->SetCircular(10000); // buffer size 10000 to have fewer cycles
+
+    variables.reserve(variables_.size());
+
+    for (unsigned iV(0); iV != variables_.size(); ++iV) {
+      auto& name(variables_[iV].first);
+      auto& expr(variables_[iV].second);
+      variables.emplace_back(0., library->getFormula(expr));
+      variablesTree->Branch(name, &variables.back(), name + "/D");
+    }
+  }
+
   std::vector<double> eventWeights;
 
   long long iEntry(0);
@@ -780,6 +808,14 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     if (doTimeProfile) {
       ioTimer += SteadyClock::now() - start;
       start = SteadyClock::now();
+    }
+
+    if (!variables.empty()) {
+      for (auto& v : variables) {
+        v.second->GetNdata();
+        v.first = v.second->EvalInstance(0);
+      }
+      variablesTree->Fill();
     }
 
     // First cut (name "") is a global filter
