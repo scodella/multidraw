@@ -17,26 +17,23 @@ namespace multidraw {
    */
   class TreeFiller : public ExprFiller {
   public:
-    TreeFiller(TTree& tree, FormulaLibrary& library, Reweight const& reweight);
+    TreeFiller(TTree& tree, char const* reweight = "");
     TreeFiller(TreeFiller const&);
     ~TreeFiller();
 
     void addBranch(char const* bname, char const* expr);
 
-    TObject const& getObj() const override { return tree_; }
-    TObject& getObj() override { return tree_; }
-    TTree const& getTree() const { return tree_; }
-
-    ExprFiller* threadClone(FormulaLibrary&) const override;
-    void threadMerge(ExprFiller&) override;
+    TTree const& getTree() const { return static_cast<TTree&>(tobj_); }
 
     static unsigned const NBRANCHMAX = 128;
 
   private:
-    void doFill_(unsigned) override;
+    TreeFiller(TTree& tree, TreeFiller const&);
 
-    TTree& tree_;
-    FormulaLibrary& library_;
+    void doFill_(unsigned) override;
+    ExprFiller* clone_() override;
+    void mergeBack_() override;
+
     std::vector<double> bvalues_{};
     std::vector<TString> bnames_{};
   };

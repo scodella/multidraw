@@ -7,62 +7,55 @@
 #include <sstream>
 #include <thread>
 
-multidraw::Plot2DFiller::Plot2DFiller(TH2& _hist, TTreeFormulaCachedPtr const& _xexpr, TTreeFormulaCachedPtr const& _yexpr, Reweight const& _reweight) :
-  ExprFiller(_reweight),
-  hist_(_hist)
+multidraw::Plot2DFiller::Plot2DFiller(TH2& _hist, char const* _xexpr, char const* _yexpr, char const* _reweight/* = ""*/) :
+  ExprFiller(_hist, _reweight)
 {
   exprs_.push_back(_xexpr);
   exprs_.push_back(_yexpr);
 }
 
 multidraw::Plot2DFiller::Plot2DFiller(Plot2DFiller const& _orig) :
-  ExprFiller(_orig),
-  hist_(_orig.hist_)
+  ExprFiller(_orig)
 {
 }
 
-multidraw::Plot2DFiller::~Plot2DFiller()
+multidraw::Plot2DFiller::Plot2DFiller(TH2& _hist, Plot2DFiller const& _orig) :
+  ExprFiller(_hist, _orig)
 {
-  if (isClone_)
-    delete &hist_;
-}
-
-multidraw::ExprFiller*
-multidraw::Plot2DFiller::threadClone(FormulaLibrary& _library) const
-{
-  std::stringstream name;
-  name << hist_.GetName() << "_thread" << std::this_thread::get_id();
-  hist_.GetDirectory()->cd();
-  auto* hist(static_cast<TH2*>(hist_.Clone(name.str().c_str())));
-
-  auto& xexpr(_library.getFormula(exprs_[0]->GetTitle()));
-  auto& yexpr(_library.getFormula(exprs_[1]->GetTitle()));
-
-  Reweight reweight(reweight_.threadClone(_library));
-
-  auto* clone(new Plot2DFiller(*hist, xexpr, yexpr, reweight));
-  clone->setClone();
-
-  return clone;
-}
-
-void
-multidraw::Plot2DFiller::threadMerge(ExprFiller& _other)
-{
-  auto* hist(static_cast<TH2 const*>(&_other.getObj()));
-  hist_.Add(hist);
 }
 
 void
 multidraw::Plot2DFiller::doFill_(unsigned _iD)
 {
   if (printLevel_ > 3) {
-    std::cout << "            Fill(" << exprs_[0]->EvalInstance(_iD) << ", ";
-    std::cout << exprs_[1]->EvalInstance(_iD) << "; " << entryWeight_ << ")" << std::endl;
+    std::cout << "            Fill(" << compiledExprs_[0]->EvalInstance(_iD) << ", ";
+    std::cout << compiledExprs_[1]->EvalInstance(_iD) << "; " << entryWeight_ << ")" << std::endl;
   }
 
-  double x(exprs_[0]->EvalInstance(_iD));
-  double y(exprs_[1]->EvalInstance(_iD));
+  double x(compiledExprs_[0]->EvalInstance(_iD));
+  double y(compiledExprs_[1]->EvalInstance(_iD));
+  auto& hist(static_cast<TH2&>(tobj_));
 
-  hist_.Fill(x, y, entryWeight_);
+  hist.Fill(x, y, entryWeight_);
+}
+
+multidraw::ExprFiller*
+multidraw::Plot2DFiller::clone_()
+{
+  auto& myHist(static_cast<TH2&>(tobj_));
+
+  std::stringstream name;
+  name << myHist.GetName() << "_thread" << std::this_thread::get_id();
+
+  TDirectory::TContext(myHist.GetDirectory());
+  auto* hist(static_cast<TH2*>(myHist.Clone(name.str().c_str())));
+
+  return new Plot2DFiller(*hist, *this);
+}
+
+void
+multidraw::Plot2DFiller::mergeBack_()
+{
+  auto& sourceHist(static_cast<TH2&>(cloneSource_->getObj()));
+  sourceHist.Add(static_cast<TH2*>(&tobj_));
 }

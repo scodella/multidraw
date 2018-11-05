@@ -2,6 +2,7 @@
 #define multidraw_Cut_h
 
 #include "TTreeFormulaCached.h"
+#include "FormulaLibrary.h"
 
 #include "TString.h"
 
@@ -13,31 +14,38 @@ namespace multidraw {
 
   class Cut {
   public:
-    Cut(char const* name, TTreeFormulaCachedPtr const& = nullptr);
+    Cut(char const* name, char const* expr = "");
     ~Cut();
 
     TString getName() const;
+    void setPrintLevel(int);
+
     unsigned getNFillers() const { return fillers_.size(); }
-    ExprFiller* getFiller(unsigned i) { return fillers_.at(i); }
     ExprFiller const* getFiller(unsigned i) const { return fillers_.at(i); }
 
+    void setCutExpr(char const* expr) { cutExpr_ = expr; }
+    TString const& getCutExpr() const { return cutExpr_; }
+
     void addFiller(ExprFiller& _filler) { fillers_.push_back(&_filler); }
-    void setFormula(TTreeFormulaCachedPtr const&);
-    TTreeFormulaCached const* getFormula() const { return cut_.get(); }
-    void setPrintLevel(int);
-    void resetCount();
-    unsigned getCount() const { return counter_; }
+
+    void bindTree(FormulaLibrary&);
+    void unlinkTree();
+    Cut* threadClone(FormulaLibrary&) const;
+
     bool evaluate();
     void fillExprs(std::vector<double> const& eventWeights);
 
+    unsigned getCount() const { return counter_; }
+
   protected:
-    TString name_;
-    TTreeFormulaCachedPtr cut_;
-    std::vector<ExprFiller*> fillers_;
+    TString name_{""};
+    TString cutExpr_{""};
+    std::vector<ExprFiller*> fillers_{};
     int printLevel_{0};
     unsigned counter_{0};
 
     std::vector<bool>* instanceMask_{nullptr};
+    TTreeFormulaCachedPtr compiledCut_{};
   };
 
 }

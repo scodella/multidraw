@@ -7,72 +7,67 @@
 #include <sstream>
 #include <thread>
 
-multidraw::Plot1DFiller::Plot1DFiller(TH1& _hist, TTreeFormulaCachedPtr const& _expr, Reweight const& _reweight, Plot1DFiller::OverflowMode _mode/* = kDefault*/) :
-  ExprFiller(_reweight),
-  hist_(_hist),
+multidraw::Plot1DFiller::Plot1DFiller(TH1& _hist, char const* _expr, char const* _reweight/* = ""*/, Plot1DFiller::OverflowMode _mode/* = kDefault*/) :
+  ExprFiller(_hist, _reweight),
   overflowMode_(_mode)
 {
-  exprs_.push_back(_expr);
+  exprs_.emplace_back(_expr);
 }
 
 multidraw::Plot1DFiller::Plot1DFiller(Plot1DFiller const& _orig) :
   ExprFiller(_orig),
-  hist_(_orig.hist_),
   overflowMode_(_orig.overflowMode_)
 {
 }
 
-multidraw::Plot1DFiller::~Plot1DFiller()
+multidraw::Plot1DFiller::Plot1DFiller(TH1& _hist, Plot1DFiller const& _orig) :
+  ExprFiller(_hist, _orig),
+  overflowMode_(_orig.overflowMode_)
 {
-  if (isClone_)
-    delete &hist_;
-}
-
-multidraw::ExprFiller*
-multidraw::Plot1DFiller::threadClone(FormulaLibrary& _library) const
-{
-  std::stringstream name;
-  name << hist_.GetName() << "_thread" << std::this_thread::get_id();
-  hist_.GetDirectory()->cd();
-  auto* hist(static_cast<TH1*>(hist_.Clone(name.str().c_str())));
-
-  auto& expr(_library.getFormula(exprs_[0]->GetTitle()));
-
-  Reweight reweight(reweight_.threadClone(_library));
-
-  auto* clone(new Plot1DFiller(*hist, expr, reweight, overflowMode_));
-  clone->setClone();
-
-  return clone;
-}
-
-void
-multidraw::Plot1DFiller::threadMerge(ExprFiller& _other)
-{
-  auto* hist(static_cast<TH1 const*>(&_other.getObj()));
-  hist_.Add(hist);
 }
 
 void
 multidraw::Plot1DFiller::doFill_(unsigned _iD)
 {
   if (printLevel_ > 3)
-    std::cout << "            Fill(" << exprs_[0]->EvalInstance(_iD) << "; " << entryWeight_ << ")" << std::endl;
+    std::cout << "            Fill(" << compiledExprs_[0]->EvalInstance(_iD) << "; " << entryWeight_ << ")" << std::endl;
 
-  double x(exprs_[0]->EvalInstance(_iD));
+  double x(compiledExprs_[0]->EvalInstance(_iD));
+  auto& hist(static_cast<TH1&>(tobj_));
 
   switch (overflowMode_) {
   case OverflowMode::kDefault:
     break;
   case OverflowMode::kDedicated:
-    if (x > hist_.GetXaxis()->GetBinLowEdge(hist_.GetNbinsX()))
-      x = hist_.GetXaxis()->GetBinLowEdge(hist_.GetNbinsX());
+    if (x > hist.GetXaxis()->GetBinLowEdge(hist.GetNbinsX()))
+      x = hist.GetXaxis()->GetBinLowEdge(hist.GetNbinsX());
     break;
   case OverflowMode::kMergeLast:
-    if (x > hist_.GetXaxis()->GetBinUpEdge(hist_.GetNbinsX()))
-      x = hist_.GetXaxis()->GetBinLowEdge(hist_.GetNbinsX());
+    if (x > hist.GetXaxis()->GetBinUpEdge(hist.GetNbinsX()))
+      x = hist.GetXaxis()->GetBinLowEdge(hist.GetNbinsX());
     break;
   }
 
-  hist_.Fill(x, entryWeight_);
+  hist.Fill(x, entryWeight_);
+}
+
+multidraw::ExprFiller*
+multidraw::Plot1DFiller::clone_()
+{
+  auto& myHist(static_cast<TH1&>(tobj_));
+
+  std::stringstream name;
+  name << myHist.GetName() << "_thread" << std::this_thread::get_id();
+
+  TDirectory::TContext(myHist.GetDirectory());
+  auto* hist(static_cast<TH1*>(myHist.Clone(name.str().c_str())));
+
+  return new Plot1DFiller(*hist, *this);
+}
+
+void
+multidraw::Plot1DFiller::mergeBack_()
+{
+  auto& sourceHist(static_cast<TH1&>(cloneSource_->getObj()));
+  sourceHist.Add(static_cast<TH1*>(&tobj_));
 }

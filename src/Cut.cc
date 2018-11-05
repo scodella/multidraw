@@ -3,17 +3,20 @@
 
 #include <iostream>
 
-multidraw::Cut::Cut(char const* _name, TTreeFormulaCachedPtr const& _formula/* = nullptr*/) :
-  name_(_name)
+multidraw::Cut::Cut(char const* _name, char const* _expr/* = ""*/) :
+  name_(_name),
+  cutExpr_(_expr)
 {
-  if (_formula)
-    setFormula(_formula);
 }
 
 multidraw::Cut::~Cut()
 {
-  for (auto* filler : fillers_)
+  unlinkTree();
+
+  for (auto* filler : fillers_) {
+    filler->mergeBack();
     delete filler;
+  }
 }
 
 TString
@@ -26,17 +29,6 @@ multidraw::Cut::getName() const
 }
 
 void
-multidraw::Cut::setFormula(TTreeFormulaCachedPtr const& _formula)
-{
-  cut_ = _formula;
-
-  delete instanceMask_;
-  instanceMask_ = nullptr;
-  if (cut_->GetMultiplicity() != 0)
-    instanceMask_ = new std::vector<bool>;
-}
-
-void
 multidraw::Cut::setPrintLevel(int _l)
 {
   printLevel_ = _l;
@@ -45,22 +37,57 @@ multidraw::Cut::setPrintLevel(int _l)
 }
 
 void
-multidraw::Cut::resetCount()
+multidraw::Cut::bindTree(FormulaLibrary& _library)
 {
   counter_ = 0;
+
+  compiledCut_.reset();
+  if (cutExpr_.Length() != 0)
+    compiledCut_ = _library.getFormula(cutExpr_);
+
+  delete instanceMask_;
+  instanceMask_ = nullptr;
+  if (compiledCut_ && compiledCut_->GetMultiplicity() != 0)
+    instanceMask_ = new std::vector<bool>;
+
   for (auto* filler : fillers_)
-    filler->resetCount();
+    filler->bindTree(_library);
+}
+
+void
+multidraw::Cut::unlinkTree()
+{
+  compiledCut_.reset();
+  delete instanceMask_;
+  instanceMask_ = nullptr;
+
+  for (auto* filler : fillers_)
+    filler->unlinkTree();
+}
+
+multidraw::Cut*
+multidraw::Cut::threadClone(FormulaLibrary& _library) const
+{
+  Cut* clone(new Cut(name_, cutExpr_));
+  clone->setPrintLevel(-1);
+
+  for (auto* filler : fillers_)
+    clone->addFiller(*filler->threadClone(_library));
+
+  clone->bindTree(_library);
+
+  return clone;
 }
 
 bool
 multidraw::Cut::evaluate()
 {
-  if (!cut_)
+  if (!compiledCut_)
     return true;
 
-  unsigned nD(cut_->GetNdata());
+  unsigned nD(compiledCut_->GetNdata());
 
-  if (cut_->GetMultiplicity() != 0)
+  if (instanceMask_ != nullptr)
     instanceMask_->assign(nD, false);
 
   if (printLevel_ > 2)
@@ -69,7 +96,7 @@ multidraw::Cut::evaluate()
   bool any(false);
 
   for (unsigned iD(0); iD != nD; ++iD) {
-    if (cut_->EvalInstance(iD) == 0.)
+    if (compiledCut_->EvalInstance(iD) == 0.)
       continue;
 
     any = true;
@@ -77,7 +104,7 @@ multidraw::Cut::evaluate()
     if (printLevel_ > 2)
       std::cout << "        " << getName() << " iteration " << iD << " pass" << std::endl;
 
-    if (cut_->GetMultiplicity() != 0)
+    if (instanceMask_ != nullptr)
       (*instanceMask_)[iD] = true;
   }
   

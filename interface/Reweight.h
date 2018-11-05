@@ -18,21 +18,15 @@ namespace multidraw {
   public:
     Reweight() {}
     Reweight(TTreeFormulaCachedPtr const&);
-    Reweight(TH1 const&, TTreeFormulaCachedPtr const&, TTreeFormulaCachedPtr const& = nullptr, TTreeFormulaCachedPtr const& = nullptr);
-    Reweight(TGraph const&, TTreeFormulaCachedPtr const&);
-    Reweight(TF1 const&, TTreeFormulaCachedPtr const&, TTreeFormulaCachedPtr const& = nullptr, TTreeFormulaCachedPtr const& = nullptr);
+    Reweight(TObject const&, TTreeFormulaCachedPtr const&, TTreeFormulaCachedPtr const& = nullptr, TTreeFormulaCachedPtr const& = nullptr);
     Reweight(Reweight const&);
     ~Reweight();
     Reweight& operator=(Reweight const&);
 
     //! Set the tree formula to reweight with.
     void set(TTreeFormulaCachedPtr const& formula);
-    //! Reweight through a histogram. Formulas return the x, y, z values to be fed to the histogram.
-    void set(TH1 const&, TTreeFormulaCachedPtr const&, TTreeFormulaCachedPtr const& = nullptr, TTreeFormulaCachedPtr const& = nullptr);
-    //! Reweight through a graph. Formula returns the x value.
-    void set(TGraph const&, TTreeFormulaCachedPtr const&);
-    //! Reweight through a function. Formulas return the x, y, z values to be fed to the histogram.
-    void set(TF1 const&, TTreeFormulaCachedPtr const&, TTreeFormulaCachedPtr const& = nullptr, TTreeFormulaCachedPtr const& = nullptr);
+    //! Reweight through a histogram, a graph, or a function. Formulas return the x, y, z values to be fed to the object.
+    void set(TObject const&, TTreeFormulaCachedPtr const&, TTreeFormulaCachedPtr const& = nullptr, TTreeFormulaCachedPtr const& = nullptr);
 
     void reset();
 
@@ -42,8 +36,6 @@ namespace multidraw {
 
     unsigned getNdata();
     double evaluate(unsigned i = 0) const { if (evaluate_) return evaluate_(i); else return 1.; }
-
-    Reweight threadClone(FormulaLibrary&) const;
 
   private:
     void setRaw_();

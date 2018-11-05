@@ -8,19 +8,9 @@ multidraw::Reweight::Reweight(TTreeFormulaCachedPtr const& _formula)
   set(_formula);
 }
   
-multidraw::Reweight::Reweight(TH1 const& _hist, TTreeFormulaCachedPtr const& _x, TTreeFormulaCachedPtr const& _y/* = nullptr*/, TTreeFormulaCachedPtr const& _z/* = nullptr*/)
+multidraw::Reweight::Reweight(TObject const& _source, TTreeFormulaCachedPtr const& _x, TTreeFormulaCachedPtr const& _y/* = nullptr*/, TTreeFormulaCachedPtr const& _z/* = nullptr*/)
 {
-  set(_hist, _x, _y, _z);
-}
-
-multidraw::Reweight::Reweight(TGraph const& _gr, TTreeFormulaCachedPtr const& _x)
-{
-  set(_gr, _x);
-}
-
-multidraw::Reweight::Reweight(TF1 const& _fct, TTreeFormulaCachedPtr const& _x, TTreeFormulaCachedPtr const& _y/* = nullptr*/, TTreeFormulaCachedPtr const& _z/* = nullptr*/)
-{
-  set(_fct, _x, _y, _z);
+  set(_source, _x, _y, _z);
 }
 
 multidraw::Reweight::Reweight(Reweight const& _orig) :
@@ -73,7 +63,7 @@ multidraw::Reweight::set(TTreeFormulaCachedPtr const& _formula)
 }
 
 void
-multidraw::Reweight::set(TH1 const& _hist, TTreeFormulaCachedPtr const& _x, TTreeFormulaCachedPtr const& _y/* = nullptr*/, TTreeFormulaCachedPtr const& _z/* = nullptr*/)
+multidraw::Reweight::set(TObject const& _source, TTreeFormulaCachedPtr const& _x, TTreeFormulaCachedPtr const& _y/* = nullptr*/, TTreeFormulaCachedPtr const& _z/* = nullptr*/)
 {
   formulas_.assign(1, _x);
   if (_y)
@@ -81,33 +71,15 @@ multidraw::Reweight::set(TH1 const& _hist, TTreeFormulaCachedPtr const& _x, TTre
   if (_z)
     formulas_.push_back(_z);
 
-  source_ = &_hist;
-  
-  setTH1_();
-}
-
-void
-multidraw::Reweight::set(TGraph const& _gr, TTreeFormulaCachedPtr const& _x)
-{
-  formulas_.assign(1, _x);
-
-  source_ = &_gr;
-  
-  setTGraph_();
-}
-
-void
-multidraw::Reweight::set(TF1 const& _fct, TTreeFormulaCachedPtr const& _x, TTreeFormulaCachedPtr const& _y/* = nullptr*/, TTreeFormulaCachedPtr const& _z/* = nullptr*/)
-{
-  formulas_.assign(1, _x);
-  if (_y)
-    formulas_.push_back(_y);
-  if (_z)
-    formulas_.push_back(_z);
-
-  source_ = &_fct;
-
-  setTF1_();
+  source_ = &_source;
+  if (source_->InheritsFrom(TH1::Class()))
+    setTH1_();
+  else if (source_->InheritsFrom(TGraph::Class()))
+    setTGraph_();
+  else if (source_->InheritsFrom(TF1::Class()))
+    setTF1_();
+  else
+    throw std::runtime_error(TString::Format("Object of incompatible class %s passed to Reweight", source_->IsA()->GetName()).Data());
 }
 
 void
@@ -129,43 +101,6 @@ multidraw::Reweight::getNdata()
     // use the first dimension
     return formulas_[0]->GetNdata();
   }
-}
-
-multidraw::Reweight
-multidraw::Reweight::threadClone(FormulaLibrary& _library) const
-{
-  Reweight reweight;
-
-  if (formulas_.size() == 0) {
-  }
-  else if (source_ == nullptr) {
-    reweight.set(_library.getFormula(formulas_[0]->GetTitle()));
-  }
-  else if (source_->InheritsFrom(TH1::Class())) {
-    TTreeFormulaCachedPtr x(_library.getFormula(formulas_[0]->GetTitle()));
-    TTreeFormulaCachedPtr y;
-    if (formulas_.size() > 1)
-      y = _library.getFormula(formulas_[1]->GetTitle());
-    TTreeFormulaCachedPtr z;
-    if (formulas_.size() > 2)
-      z = _library.getFormula(formulas_[2]->GetTitle());
-    reweight.set(static_cast<TH1 const&>(*source_), x, y, z);
-  }
-  else if (source_->InheritsFrom(TGraph::Class())) {
-    reweight.set(static_cast<TGraph const&>(*source_), _library.getFormula(formulas_[0]->GetTitle()));
-  }
-  else if (source_->InheritsFrom(TF1::Class())) {
-    TTreeFormulaCachedPtr x(_library.getFormula(formulas_[0]->GetTitle()));
-    TTreeFormulaCachedPtr y;
-    if (formulas_.size() > 1)
-      y = _library.getFormula(formulas_[1]->GetTitle());
-    TTreeFormulaCachedPtr z;
-    if (formulas_.size() > 2)
-      z = _library.getFormula(formulas_[2]->GetTitle());
-    reweight.set(static_cast<TF1 const&>(*source_), x, y, z);
-  }
-
-  return reweight;
 }
 
 void

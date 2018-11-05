@@ -17,9 +17,11 @@
 #include "TString.h"
 
 #include <vector>
+#include <thread>
 #include <mutex>
 #include <condition_variable>
 #include <atomic>
+#include <tuple>
 
 namespace multidraw {
 
@@ -50,14 +52,17 @@ namespace multidraw {
     MultiDraw(char const* treeName = "events");
     ~MultiDraw();
 
+    //! Set the tree name.
+    void setTreeName(char const* name) { treeName_ = name; }
+
     //! Add an input file.
-    void addInputPath(char const* path) { tree_.Add(path); }
+    void addInputPath(char const* path) { inputPaths_.emplace_back(path); }
 
     //! Add a friend tree (not tested)
     void addFriend(char const* treeName, TObjArray const* paths);
 
     //! Apply an entry list.
-    void applyEntryList(TEntryList* elist) { tree_.SetEntryList(elist); }
+    void applyEntryList(TEntryList* elist) { entryList_ = elist; }
 
     //! Set the name and the C variable type of the weight branch. Pass an empty string to unset.
     void setWeightBranch(char const* bname) { weightBranchName_ = bname; }
@@ -74,29 +79,33 @@ namespace multidraw {
     //! Remove a cut.
     void removeCut(char const* name);
 
-    //! Apply a constant weight (e.g. luminosity times cross section) to all events, possibly varying by input tree.
+    //! Apply a constant overall weight (e.g. luminosity times cross section) to all events
+    void setConstantWeight(double w) { globalWeight_ = w; }
+
+    //! Apply an overall weight to specific trees
     /*
-     * Tree number option is useful when e.g. running over multiple MC samples with different cross
-     * sections in one shot.
-     * When tree number >= 0 and exclusive = true, the global weight is not applied to the events
+     * When exclusive = true, the global weight is not applied to the events
      * from the given tree number. If exclusive = false, the tree-by-tree weight is applied on top
      * of the global one.
      */
-    void setConstantWeight(double w, int treeNumber = -1, bool exclusive = true);
+    void setTreeWeight(int treeNumber, bool exclusive, double w) { treeWeights_[treeNumber] = std::make_pair(w, exclusive); }
 
-    //! Set an overall reweight, possibly varying by input tree.
+    //! Set an overall reweight
     /*!
      * Reweight factor can be set in two ways. If the second argument is nullptr,
      * the value of expr in every event is used as the weight. If instead a TH1,
      * TGraph, or TF1 is passed as the second argument, the value of expr is used
      * to look up the y value of the source object, which is used as the weight.
-     * Tree number option is useful when e.g. running over multiple MC samples with different cross
-     * sections in one shot.
      */
-    void setReweight(char const* expr, TObject const* source = nullptr, int treeNumber = -1, bool exclusive = true);
+    void setReweight(char const* expr, TObject const* source = nullptr);
 
-    //! Set an overall reweight, possibly varying by input tree.
-    void setReweight(Reweight const&, int treeNumber = -1, bool exclusive = true);
+    //! Set an overall reweight to specific trees
+    /*!
+     * When exclusive = true, the global reweight is not applied to the events
+     * from the given tree number. If exclusive = false, the tree-by-tree weight is applied on top
+     * of the global one.
+     */
+    void setTreeReweight(int treeNumber, bool exclusive, const char* expr, TObject const* source = nullptr);
 
     //! Set a prescale factor
     /*!
@@ -154,15 +163,12 @@ namespace multidraw {
 
     unsigned numObjs() const;
 
-    TChain const& getTree() const { return tree_; }
-
   private:
     //! Handle addPlot and addTree with the same interface (requires a callback to generate the right object)
-    typedef std::function<ExprFiller*(Reweight const&)> ObjGen;
-    ExprFiller& addObj_(TString const& cutName, char const* reweight, ObjGen const&);
     Cut& findCut_(TString const& cutName) const;
     
     struct SynchTools {
+      std::thread::id mainThread;
       std::mutex mutex;
       std::condition_variable condition;
       std::atomic_bool flag{false};
@@ -180,7 +186,10 @@ namespace multidraw {
     long executeOne_(long nEntries, unsigned long firstEntry, TChain&, unsigned treeNumberOffset = 0, SynchTools* = nullptr, bool byTree = false);
 #endif
 
-    TChain tree_;
+    TString treeName_{"events"};
+    std::vector<TString> inputPaths_{};
+
+    TEntryList* entryList_{nullptr};
     std::vector<TChain*> friendTrees_{};
     TString weightBranchName_{"weight"};
     TString evtNumBranchName_{""};
@@ -190,12 +199,12 @@ namespace multidraw {
 
     std::vector<Cut*> cuts_;
     std::vector<std::pair<TString, TString>> variables_;
-    FormulaLibrary library_;
 
     double globalWeight_{1.};
-    Reweight globalReweight_{};
+    TString globalReweightExpr_{};
+    TObject const* globalReweightSource_{nullptr};
     std::map<unsigned, std::pair<double, bool>> treeWeights_{};
-    std::map<unsigned, std::pair<Reweight, bool>> treeReweights_{};
+    std::map<unsigned, std::tuple<TString, TObject const*, bool>> treeReweightSources_{};
 
     int printLevel_{0};
     bool doTimeProfile_{false};

@@ -26,21 +26,19 @@ namespace multidraw {
       kMergeLast
     };
 
-    Plot1DFiller(TH1& hist, TTreeFormulaCachedPtr const& expr, Reweight const& reweight, OverflowMode mode = kDefault);
+    Plot1DFiller(TH1& hist, char const* expr, char const* reweight = "", OverflowMode mode = kDefault);
     Plot1DFiller(Plot1DFiller const&);
-    ~Plot1DFiller();
+    ~Plot1DFiller() {}
 
-    TObject const& getObj() const override { return hist_; }
-    TObject& getObj() override { return hist_; }
-    TH1 const& getHist() const { return hist_; }
-
-    ExprFiller* threadClone(FormulaLibrary&) const override;
-    void threadMerge(ExprFiller&) override;
+    TH1 const& getHist() const { return static_cast<TH1&>(tobj_); }
 
   private:
-    void doFill_(unsigned) override;
+    Plot1DFiller(TH1& hist, Plot1DFiller const&);
 
-    TH1& hist_;
+    void doFill_(unsigned) override;
+    ExprFiller* clone_() override;
+    void mergeBack_() override;
+
     OverflowMode overflowMode_{kDefault};
   };
 

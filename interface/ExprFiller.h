@@ -2,6 +2,7 @@
 #define multidraw_ExprFiller_h
 
 #include "TTreeFormulaCached.h"
+#include "FormulaLibrary.h"
 #include "Reweight.h"
 
 #include "TString.h"
@@ -16,38 +17,52 @@ namespace multidraw {
   /*!
    * Inherited by Plot (histogram) and Tree (tree). Does not own any of
    * the TTreeFormula objects by default.
+   * Has a function to reweight but only through simple expressions. Can
+   * in principle expand to allow reweight through histograms and graphs.
    */
   class ExprFiller {
   public:
-    ExprFiller(Reweight const& reweight);
+    ExprFiller(TObject&, char const* reweight = "");
     ExprFiller(ExprFiller const&);
-    virtual ~ExprFiller() {}
-
-    void fill(std::vector<double> const& eventWeights, std::vector<bool> const* = nullptr);
-
-    virtual TObject const& getObj() const = 0;
-    virtual TObject& getObj() = 0;
-
-    void resetCount() { counter_ = 0; }
-    unsigned getCount() const { return counter_; }
+    virtual ~ExprFiller();
 
     void setPrintLevel(int l) { printLevel_ = l; }
 
-    virtual ExprFiller* threadClone(FormulaLibrary&) const = 0;
-    virtual void threadMerge(ExprFiller&) = 0;
+    TObject const& getObj() const { return tobj_; }
+    TObject& getObj() { return tobj_; }
+
+    void bindTree(FormulaLibrary&);
+    void unlinkTree();
+    ExprFiller* threadClone(FormulaLibrary&);
+
+    void fill(std::vector<double> const& eventWeights, std::vector<bool> const* = nullptr);
+
+    //! Merge the underlying object into the main-thread object
+    void mergeBack();
+
+    unsigned getCount() const { return counter_; }
 
   protected:
-    virtual void doFill_(unsigned) = 0;
-    void setClone() { isClone_ = true; }
+    // Special copy constructor for cloning
+    ExprFiller(TObject&, ExprFiller const&);
 
-    std::vector<TTreeFormulaCachedPtr> exprs_{};
-    Reweight reweight_{};
+    virtual void doFill_(unsigned) = 0;
+    virtual ExprFiller* clone_() = 0;
+    virtual void mergeBack_() = 0;
+
+    TObject& tobj_;
+
+    std::vector<TString> exprs_{};
+    TString reweightExpr_{};
     double entryWeight_{1.};
     unsigned counter_{0};
 
-    bool isClone_{false};
+    ExprFiller* cloneSource_{nullptr};
 
     int printLevel_{0};
+
+    std::vector<TTreeFormulaCachedPtr> compiledExprs_{};
+    Reweight* compiledReweight_{nullptr};
   };
 
 }
