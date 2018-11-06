@@ -523,22 +523,27 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
             continue;
           }
 
-          vItr = variablesCopy.erase(vItr);
-          added = true;
-
           variables.resize(variables.size() + 1);
           auto& varspec(variables.back());
 
           varspec.name = name;
           varspec.sourceFormula = formula;
 
-          // give some reasonable initial size
-          varspec.values.reserve(64);
+          if (formula->GetMultiplicity() == 0) {
+            // singlet branch
+            varspec.values.resize(1);
+            variablesTree->Branch(name, varspec.values.data(), name + "/D");
+          }
+          else {
+            // give some reasonable initial size
+            varspec.values.resize(64);
+            // array, or expression composed of dynamic array elements
+            variablesTree->Branch("size__" + name, &varspec.nD, "size__" + name + "/i");
+            variablesTree->Branch(name, varspec.values.data(), name + "[size__" + name + "]/D");
+          }
 
-          // We always define the variables as variable-size arrays so that when the variable
-          // is undefined in a tree entry we can set its Ndata to 0
-          variablesTree->Branch("size__" + name, &varspec.nD, "size__" + name + "/i");
-          variablesTree->Branch(name, varspec.values.data(), name + "[size__" + name + "]/D");
+          vItr = variablesCopy.erase(vItr);
+          added = true;
         }
 
         if (variablesCopy.empty())
@@ -835,18 +840,24 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
 
     if (variablesTree != nullptr) {
       for (auto& v : variables) {
-        auto* currentData(v.values.data());
-        v.nD = v.sourceFormula->GetNdata();
-        v.values.resize(v.nD);
-
-        if (v.values.data() != currentData) {
-          // vector was reallocated
-          auto* br(variablesTree->GetBranch(v.name));
-          br->SetAddress(v.values.data());
+        if (v.sourceFormula->GetMultiplicity() == 0) {
+          v.sourceFormula->GetNdata();
+          v.values[0] = v.sourceFormula->EvalInstance(0);
         }
+        else {
+          auto* currentData(v.values.data());
+          v.nD = v.sourceFormula->GetNdata();
+          v.values.resize(v.nD);
 
-        for (unsigned iD(0); iD != v.nD; ++iD)
-          v.values[iD] = v.sourceFormula->EvalInstance(iD);
+          if (v.values.data() != currentData) {
+            // vector was reallocated
+            auto* br(variablesTree->GetBranch(v.name));
+            br->SetAddress(v.values.data());
+          }
+
+          for (unsigned iD(0); iD != v.nD; ++iD)
+            v.values[iD] = v.sourceFormula->EvalInstance(iD);
+        }
       }
       variablesTree->Fill();
       variablesTree->LoadTree(variablesTree->GetEntries() - 1);
