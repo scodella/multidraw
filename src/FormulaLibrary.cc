@@ -16,7 +16,7 @@ multidraw::FormulaLibrary::getFormula(char const* _expr, bool _silent/* = false*
     return fItr->second;
   }
 
-  auto* formula(NewTTreeFormulaCached("formula", _expr, &tree_));
+  auto* formula(NewTTreeFormulaCached("formula", _expr, &tree_, _silent));
   if (formula == nullptr) {
     std::stringstream ss;
     ss << "Failed to compile expression \"" << _expr << "\"";

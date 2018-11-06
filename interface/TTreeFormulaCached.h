@@ -51,9 +51,9 @@ typedef std::shared_ptr<TTreeFormulaCached> TTreeFormulaCachedPtr;
 */
 
 //! Create a TTreeFormula with error handling
-TTreeFormula* NewTTreeFormula(char const* name, char const* expr, TTree*);
+TTreeFormula* NewTTreeFormula(char const* name, char const* expr, TTree*, bool silent = false);
 
 //! Create a TTreeFormulaCached with error handling
-TTreeFormulaCached* NewTTreeFormulaCached(char const* name, char const* expr, TTree*);
+TTreeFormulaCached* NewTTreeFormulaCached(char const* name, char const* expr, TTree*, bool silent = false);
 
 #endif

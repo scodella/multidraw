@@ -40,11 +40,17 @@ struct ErrorHandlerReport {
 Int_t ErrorHandlerReport::lastErrorLevel{0};
 
 TTreeFormula*
-NewTTreeFormula(char const* _name, char const* _expr, TTree* _tree)
+NewTTreeFormula(char const* _name, char const* _expr, TTree* _tree, bool _silent/* = false*/)
 {
   auto* originalErrh(SetErrorHandler(ErrorHandlerReport::errorHandler));
+  auto originalIgnoreLevel(gErrorIgnoreLevel);
+  if (_silent)
+    gErrorIgnoreLevel = kFatal;
 
   auto* formula(new TTreeFormula(_name, _expr, _tree));
+
+  if (_silent)
+    gErrorIgnoreLevel = originalIgnoreLevel;
 
   SetErrorHandler(originalErrh);
 
@@ -59,13 +65,19 @@ NewTTreeFormula(char const* _name, char const* _expr, TTree* _tree)
 
 //! A wrapper for TTreeFormulaCached creation
 TTreeFormulaCached*
-NewTTreeFormulaCached(char const* _name, char const* _expr, TTree* _tree)
+NewTTreeFormulaCached(char const* _name, char const* _expr, TTree* _tree, bool _silent/* = false*/)
 {
   auto* originalErrh(SetErrorHandler(ErrorHandlerReport::errorHandler));
+  auto originalIgnoreLevel(gErrorIgnoreLevel);
+  if (_silent)
+    gErrorIgnoreLevel = kFatal;
 
   auto* formula(new TTreeFormulaCached(_name, _expr, _tree));
 
   SetErrorHandler(originalErrh);
+
+  if (_silent)
+    gErrorIgnoreLevel = originalIgnoreLevel;
 
   if (formula->GetTree() == nullptr || ErrorHandlerReport::lastErrorLevel == kError) {
     // compilation failed

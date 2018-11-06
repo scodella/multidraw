@@ -511,11 +511,11 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
         auto vItr(variablesCopy.begin());
         while (vItr != variablesCopy.end()) {
           auto& name(vItr->first);
-          auto& expr(vItr->second);
+          auto expr(vItr->second);
 
           TTreeFormulaCachedPtr formula;
           try {
-            formula = library.getFormula(expr);
+            formula = library.getFormula(expr, true);
           }
           catch (std::invalid_argument&) {
             // compilation failed - probably the expression was dependent on another variable
