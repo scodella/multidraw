@@ -9,7 +9,7 @@ multidraw::FormulaLibrary::FormulaLibrary(TTree& _tree) :
 }
 
 TTreeFormulaCachedPtr const&
-multidraw::FormulaLibrary::getFormula(char const* _expr)
+multidraw::FormulaLibrary::getFormula(char const* _expr, bool _silent/* = false*/)
 {
   auto fItr(this->find(_expr));
   if (fItr != this->end()) {
@@ -20,7 +20,8 @@ multidraw::FormulaLibrary::getFormula(char const* _expr)
   if (formula == nullptr) {
     std::stringstream ss;
     ss << "Failed to compile expression \"" << _expr << "\"";
-    std::cerr << ss.str();
+    if (!_silent)
+      std::cerr << ss.str();
     throw std::invalid_argument(ss.str());
   }
 

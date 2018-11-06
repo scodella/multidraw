@@ -498,24 +498,63 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       variablesTree = new TTree("_variables", "");
       variablesTree->SetCircular(10000); // buffer size 10000 to have fewer cycles
 
-      variables.resize(this->variables_.size());
-
-      for (unsigned iV(0); iV != this->variables_.size(); ++iV) {
-        auto& name(this->variables_[iV].first);
-        auto& expr(this->variables_[iV].second);
-        variables[iV].name = name;
-        variables[iV].sourceFormula = library.getFormula(expr);
-
-        // give some reasonable initial size
-        variables[iV].values.reserve(64);
-
-        // We always define the variables as variable-size arrays so that when the variable
-        // is undefined in a tree entry we can set its Ndata to 0
-        variablesTree->Branch("size__" + name, &variables[iV].nD, "size__" + name + "/i");
-        variablesTree->Branch(name, variables[iV].values.data(), name + "[size__" + name + "]/D");
-      }
-
       _tree.AddFriend(variablesTree);
+
+      variables.reserve(this->variables_.size());
+
+      auto variablesCopy(this->variables_);
+
+      // Recursively add variables to resolve dependency
+      while (true) {
+        bool added(false); // if this is still false at the end of the loop, we throw
+
+        auto vItr(variablesCopy.begin());
+        while (vItr != variablesCopy.end()) {
+          auto& name(vItr->first);
+          auto& expr(vItr->second);
+
+          TTreeFormulaCachedPtr formula;
+          try {
+            formula = library.getFormula(expr);
+          }
+          catch (std::invalid_argument&) {
+            // compilation failed - probably the expression was dependent on another variable
+            ++vItr;
+            continue;
+          }
+
+          auto vItrCopy(vItr);
+          --vItrCopy;
+          variablesCopy.erase(vItr);
+          vItr = vItrCopy;
+          added = true;
+
+          variables.resize(variables.size() + 1);
+          auto& varspec(variables.back());
+
+          varspec.name = name;
+          varspec.sourceFormula = formula;
+
+          // give some reasonable initial size
+          varspec.values.reserve(64);
+
+          // We always define the variables as variable-size arrays so that when the variable
+          // is undefined in a tree entry we can set its Ndata to 0
+          variablesTree->Branch("size__" + name, &varspec.nD, "size__" + name + "/i");
+          variablesTree->Branch(name, varspec.values.data(), name + "[size__" + name + "]/D");
+        }
+
+        if (variablesCopy.empty())
+          break;
+        else if (!added) {
+          std::stringstream ss;
+          ss << "Failed to compile the following variables:" << std::endl;
+          for (auto& v : variablesCopy)
+            ss << " " << v.first << std::endl;
+          std::cerr << ss.str();
+          throw std::runtime_error("Variable compilation failure");
+        }
+      }
     });
 
   std::vector<Cut*> cuts;

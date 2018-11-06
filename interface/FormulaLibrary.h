@@ -17,7 +17,7 @@ namespace multidraw {
     ~FormulaLibrary() {}
 
     //! Find the formula object matching the expr. If not found, create new.
-    TTreeFormulaCachedPtr const& getFormula(char const* expr);
+    TTreeFormulaCachedPtr const& getFormula(char const* expr, bool silent = false);
 
     //! Erase formulas with only one ref count (i.e. by myself)
     void prune();
