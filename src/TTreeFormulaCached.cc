@@ -87,5 +87,7 @@ NewTTreeFormulaCached(char const* _name, char const* _expr, TTree* _tree, bool _
     return nullptr;
   }
 
+  ErrorHandlerReport::lastErrorLevel = 0;
+
   return formula;
 }
