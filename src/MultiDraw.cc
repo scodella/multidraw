@@ -834,7 +834,6 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
           v.vbranch->Fill();
         }
       }
-      //      variablesTree->LoadTree(variablesTree->GetEntries() - 1);
     }
 
     // First cut (name "") is a global filter
