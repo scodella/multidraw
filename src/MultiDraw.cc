@@ -503,58 +503,29 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
 
       variables.reserve(this->variables_.size());
 
-      auto variablesCopy(this->variables_);
+      // Adding variables in given order - variables dependent on others must be declared in order
+      for (auto& v : this->variables_) {
+        auto& name(v.first);
+        auto& expr(v.second);
 
-      // Recursively add variables to resolve dependency
-      while (true) {
-        bool added(false); // if this is still false at the end of the loop, we throw
+        TTreeFormulaCachedPtr formula(library.getFormula(expr));
 
-        auto vItr(variablesCopy.begin());
-        while (vItr != variablesCopy.end()) {
-          auto& name(vItr->first);
-          auto& expr(vItr->second);
+        variables.resize(variables.size() + 1);
+        auto& varspec(variables.back());
 
-          TTreeFormulaCachedPtr formula;
-          try {
-            formula = library.getFormula(expr, true);
-          }
-          catch (std::invalid_argument&) {
-            // compilation failed - expression could be dependent on another variable
-            ++vItr;
-            continue;
-          }
+        varspec.sourceFormula = formula;
 
-          variables.resize(variables.size() + 1);
-          auto& varspec(variables.back());
-
-          varspec.sourceFormula = formula;
-
-          if (formula->GetMultiplicity() == 0) {
-            // singlet branch
-            varspec.values.resize(1);
-            varspec.vbranch = variablesTree->Branch(name, varspec.values.data(), name + "/D");
-          }
-          else {
-            // give some reasonable initial size
-            varspec.values.resize(64);
-            // array, or expression composed of dynamic array elements
-            varspec.nbranch = variablesTree->Branch("size__" + name, &varspec.nD, "size__" + name + "/i");
-            varspec.vbranch = variablesTree->Branch(name, varspec.values.data(), name + "[size__" + name + "]/D");
-          }
-
-          vItr = variablesCopy.erase(vItr);
-          added = true;
+        if (formula->GetMultiplicity() == 0) {
+          // singlet branch
+          varspec.values.resize(1);
+          varspec.vbranch = variablesTree->Branch(name, varspec.values.data(), name + "/D");
         }
-
-        if (variablesCopy.empty())
-          break;
-        else if (!added) {
-          std::stringstream ss;
-          ss << "Failed to compile the following variables:" << std::endl;
-          for (auto& v : variablesCopy)
-            ss << " " << v.first << std::endl;
-          std::cerr << ss.str();
-          throw std::runtime_error("Variable compilation failure");
+        else {
+          // give some reasonable initial size
+          varspec.values.resize(64);
+          // array, or expression composed of dynamic array elements
+          varspec.nbranch = variablesTree->Branch("size__" + name, &varspec.nD, "size__" + name + "/i");
+          varspec.vbranch = variablesTree->Branch(name, varspec.values.data(), name + "[size__" + name + "]/D");
         }
       }
     });
