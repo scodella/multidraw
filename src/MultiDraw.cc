@@ -511,22 +511,19 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
         auto vItr(variablesCopy.begin());
         while (vItr != variablesCopy.end()) {
           auto& name(vItr->first);
-          auto expr(vItr->second);
+          auto& expr(vItr->second);
 
           TTreeFormulaCachedPtr formula;
           try {
             formula = library.getFormula(expr, true);
           }
           catch (std::invalid_argument&) {
-            // compilation failed - probably the expression was dependent on another variable
+            // compilation failed - expression could be dependent on another variable
             ++vItr;
             continue;
           }
 
-          auto vItrCopy(vItr);
-          --vItrCopy;
-          variablesCopy.erase(vItr);
-          vItr = vItrCopy;
+          vItr = variablesCopy.erase(vItr);
           added = true;
 
           variables.resize(variables.size() + 1);
@@ -557,6 +554,26 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       }
     });
 
+  Reweight* globalReweight{nullptr};
+  std::map<unsigned, std::pair<Reweight*, bool>> treeReweights;
+
+  auto compileReweights([&globalReweight, &treeReweights, &library, this]() {
+      if (this->globalReweightExpr_.Length() != 0) {
+        if (this->globalReweightSource_ == nullptr)
+          globalReweight = new Reweight(library.getFormula(this->globalReweightExpr_));
+        else
+          globalReweight = new Reweight(*this->globalReweightSource_, library.getFormula(this->globalReweightExpr_));
+      }
+
+      for (auto& tr : this->treeReweightSources_) {
+        auto& formula(library.getFormula(std::get<0>(tr.second)));
+        if (std::get<1>(tr.second) == nullptr)
+          treeReweights[tr.first] = std::make_pair(new Reweight(formula), std::get<2>(tr.second));
+        else
+          treeReweights[tr.first] = std::make_pair(new Reweight(*std::get<1>(tr.second), formula), std::get<2>(tr.second));
+      }
+    });
+
   std::vector<Cut*> cuts;
 
   if (_synchTools == nullptr || std::this_thread::get_id() == _synchTools->mainThread) {
@@ -579,12 +596,13 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       if (doTimeProfile)
         cutTimers.emplace_back(SteadyClock::duration::zero());
     }
+
+    compileReweights();
   }
   else {
     // side threads
-    
-    // the only part that needs a lock is filler cloning, but we'll just lock here
-    // to make sure the main thread is in wait()
+
+    // We need to perform all formula compilation under a lock because it uses a global
     std::lock_guard<std::mutex> lock(_synchTools->mutex);
 
     compileVariables();
@@ -597,26 +615,11 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       cuts.push_back(origCut.threadClone(library));
     }
 
+    compileReweights();
+
     // tell the main thread to go ahead with initializing the next thread
     _synchTools->flag = true;
     _synchTools->condition.notify_one();
-  }
-
-  Reweight* globalReweight{nullptr};
-  if (globalReweightExpr_.Length() != 0) {
-    if (globalReweightSource_ == nullptr)
-      globalReweight = new Reweight(library.getFormula(globalReweightExpr_));
-    else
-      globalReweight = new Reweight(*globalReweightSource_, library.getFormula(globalReweightExpr_));
-  }
-
-  std::map<unsigned, std::pair<Reweight*, bool>> treeReweights;
-  for (auto& tr : treeReweightSources_) {
-    auto& formula(library.getFormula(std::get<0>(tr.second)));
-    if (std::get<1>(tr.second) == nullptr)
-      treeReweights[tr.first] = std::make_pair(new Reweight(formula), std::get<2>(tr.second));
-    else
-      treeReweights[tr.first] = std::make_pair(new Reweight(*std::get<1>(tr.second), formula), std::get<2>(tr.second));
   }
 
   std::vector<double> eventWeights;

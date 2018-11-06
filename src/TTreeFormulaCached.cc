@@ -60,6 +60,8 @@ NewTTreeFormula(char const* _name, char const* _expr, TTree* _tree, bool _silent
     return nullptr;
   }
 
+  ErrorHandlerReport::lastErrorLevel = 0;
+
   return formula;
 }
 

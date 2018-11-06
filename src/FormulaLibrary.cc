@@ -21,7 +21,7 @@ multidraw::FormulaLibrary::getFormula(char const* _expr, bool _silent/* = false*
     std::stringstream ss;
     ss << "Failed to compile expression \"" << _expr << "\"";
     if (!_silent)
-      std::cerr << ss.str();
+      std::cerr << ss.str() << std::endl;
     throw std::invalid_argument(ss.str());
   }
 
