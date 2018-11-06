@@ -925,7 +925,10 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       delete cut;
   }
 
-  delete variablesTree;
+  if (variablesTree != nullptr) {
+    _tree.RemoveFriend(variablesTree);
+    delete variablesTree;
+  }
 
   delete globalReweight;
   for (auto& tr : treeReweights)
