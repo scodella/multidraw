@@ -481,7 +481,8 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
 
   // If we have custom-defined variables, must compile them before cuts and fillers refer to them
   struct VariableSpec {
-    TString name;
+    TBranch* nbranch{nullptr};
+    TBranch* vbranch{nullptr};
     unsigned nD{0};
     std::vector<double> values{};
     TTreeFormulaCachedPtr sourceFormula{};
@@ -526,20 +527,19 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
           variables.resize(variables.size() + 1);
           auto& varspec(variables.back());
 
-          varspec.name = name;
           varspec.sourceFormula = formula;
 
           if (formula->GetMultiplicity() == 0) {
             // singlet branch
             varspec.values.resize(1);
-            variablesTree->Branch(name, varspec.values.data(), name + "/D");
+            varspec.vbranch = variablesTree->Branch(name, varspec.values.data(), name + "/D");
           }
           else {
             // give some reasonable initial size
             varspec.values.resize(64);
             // array, or expression composed of dynamic array elements
-            variablesTree->Branch("size__" + name, &varspec.nD, "size__" + name + "/i");
-            variablesTree->Branch(name, varspec.values.data(), name + "[size__" + name + "]/D");
+            varspec.nbranch = variablesTree->Branch("size__" + name, &varspec.nD, "size__" + name + "/i");
+            varspec.vbranch = variablesTree->Branch(name, varspec.values.data(), name + "[size__" + name + "]/D");
           }
 
           vItr = variablesCopy.erase(vItr);
@@ -843,6 +843,8 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
         if (v.sourceFormula->GetMultiplicity() == 0) {
           v.sourceFormula->GetNdata();
           v.values[0] = v.sourceFormula->EvalInstance(0);
+
+          v.vbranch->Fill();
         }
         else {
           auto* currentData(v.values.data());
@@ -851,16 +853,17 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
 
           if (v.values.data() != currentData) {
             // vector was reallocated
-            auto* br(variablesTree->GetBranch(v.name));
-            br->SetAddress(v.values.data());
+            v.vbranch->SetAddress(v.values.data());
           }
 
           for (unsigned iD(0); iD != v.nD; ++iD)
             v.values[iD] = v.sourceFormula->EvalInstance(iD);
+
+          v.nbranch->Fill();
+          v.vbranch->Fill();
         }
       }
-      variablesTree->Fill();
-      variablesTree->LoadTree(variablesTree->GetEntries() - 1);
+      //      variablesTree->LoadTree(variablesTree->GetEntries() - 1);
     }
 
     // First cut (name "") is a global filter
