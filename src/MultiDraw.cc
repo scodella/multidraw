@@ -653,23 +653,11 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     printEvery = 1000;
   else if (printLevel_ >= 4)
     printEvery = 1;
+
+  if (printLevel >= 0)
+    (std::cout << "      0 events").flush();
   
   while (iEntry != nEntries) {
-    if (iEntry % printEvery == 0) {
-      if (_synchTools != nullptr)
-        _synchTools->totalEvents += printEvery;
-
-      if (printLevel >= 0) {
-        if (_synchTools == nullptr)
-          (std::cout << "\r      " << iEntry << " events").flush();
-        else
-          (std::cout << "\r      " << _synchTools->totalEvents.load() << " events").flush();
-
-        if (printLevel > 2)
-          std::cout << std::endl;
-      }
-    }
-
     if (doTimeProfile)
       start = SteadyClock::now();
 
@@ -698,6 +686,22 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       break;
 
     ++iEntry;
+
+    // Print progress
+    if (iEntry % printEvery == 0) {
+      if (_synchTools != nullptr)
+        _synchTools->totalEvents += printEvery;
+
+      if (printLevel >= 0) {
+        if (_synchTools == nullptr)
+          (std::cout << "\r      " << iEntry << " events").flush();
+        else
+          (std::cout << "\r      " << _synchTools->totalEvents.load() << " events").flush();
+
+        if (printLevel > 2)
+          std::cout << std::endl;
+      }
+    }
 
     if (treeNumber != _tree.GetTreeNumber()) {
       if (_byTree && _nEntries >= 0 && _tree.GetTreeNumber() >= _nEntries) {
