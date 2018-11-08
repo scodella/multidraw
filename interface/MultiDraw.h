@@ -168,10 +168,17 @@ namespace multidraw {
     Cut& findCut_(TString const& cutName) const;
     
     struct SynchTools {
+      enum State {
+        kUndefined,
+        kThreadInitializing,
+        kInitialized,
+        kRunning,
+        kFinalizing
+      };
       std::thread::id mainThread;
       std::mutex mutex;
       std::condition_variable condition;
-      std::atomic_bool flag{false};
+      State state{kUndefined};
       std::atomic_ullong totalEvents{0};
     };
 

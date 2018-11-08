@@ -292,17 +292,23 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
         if (threadElist != nullptr)
           tree->SetEntryList(threadElist);
 
+        std::unique_lock<std::mutex> lock(synchTools.mutex);
+        synchTools.state = SynchTools::kThreadInitializing;
+
         threads.push_back(new std::thread(threadTask, treeNumberOffset, tree));
         trees.push_back(tree);
 
         // Wait until the thread initialization step is done
-        std::unique_lock<std::mutex> lock(synchTools.mutex);
-        synchTools.condition.wait(lock, [&synchTools]() { return synchTools.flag.load(); });
-
-        synchTools.flag = false;
+        synchTools.condition.wait(lock, [&synchTools]() { return synchTools.state == SynchTools::kInitialized; });
       }
 
       // Started N-1 threads. Process the rest of events (staring from 0) in the main thread
+
+      {
+        std::unique_lock<std::mutex> lock(synchTools.mutex);
+        synchTools.state = SynchTools::kRunning;
+      }
+
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
       executeOne_(nFilesMainThread, 0, mainTree, 0, nullptr, &synchTools, true);
 #else
@@ -388,19 +394,24 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
           tree->SetEntryList(threadElist);
 
         std::unique_lock<std::mutex> lock(synchTools.mutex);
+        synchTools.state = SynchTools::kThreadInitializing;
 
         threads.push_back(new std::thread(threadTask, threadFirstEntry, treeNumberOffset, tree));
         trees.push_back(tree);
 
         // Wait for initialization step to complete
-        synchTools.condition.wait(lock, [&synchTools]() { return synchTools.flag.load(); });
-
-        synchTools.flag = false;
+        synchTools.condition.wait(lock, [&synchTools]() { return synchTools.state == SynchTools::kInitialized; });
 
         firstEntry += nPerThread;
       }
 
       // Started N-1 threads. Process the rest of events in the main thread
+
+      {
+        std::unique_lock<std::mutex> lock(synchTools.mutex);
+        synchTools.state = SynchTools::kRunning;
+      }
+
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
       executeOne_(nTotal - (firstEntry - _firstEntry), firstEntry, mainTree, 0, treeOffsets, &synchTools);
 #else
@@ -410,7 +421,7 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
 
     {
       std::unique_lock<std::mutex> lock(synchTools.mutex);
-      synchTools.flag = true;
+      synchTools.state = SynchTools::kFinalizing;
       synchTools.condition.notify_all();
     }
 
@@ -594,8 +605,8 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     compileReweights();
 
     // tell the main thread to go ahead with initializing the next thread
-    _synchTools->flag = true;
-    _synchTools->condition.notify_one();
+    _synchTools->state = SynchTools::kInitialized;
+    _synchTools->condition.notify_all();
   }
 
   std::vector<double> eventWeights;
@@ -948,7 +959,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
 
     // Again we'll just lock the entire block
     std::unique_lock<std::mutex> lock(_synchTools->mutex);
-    _synchTools->condition.wait(lock, [_synchTools]() { return _synchTools->flag.load(); });
+    _synchTools->condition.wait(lock, [_synchTools]() { return _synchTools->state == SynchTools::kFinalizing; });
 
     // Clone fillers will merge themselves to the main object in the destructor
     for (auto* cut : cuts)
