@@ -30,14 +30,14 @@ TTreeFormulaCached::EvalInstance(Int_t _i, char const* _stringStack[]/* = nullpt
 }
 
 struct ErrorHandlerReport {
-  static Int_t lastErrorLevel;
+  thread_local static Int_t lastErrorLevel;
   static void errorHandler(Int_t _level, Bool_t _abort, char const* _location, char const* _msg) {
     lastErrorLevel = _level;
     DefaultErrorHandler(_level, _abort, _location, _msg);
   }
 };
 
-Int_t ErrorHandlerReport::lastErrorLevel{0};
+thread_local Int_t ErrorHandlerReport::lastErrorLevel{0};
 
 TTreeFormula*
 NewTTreeFormula(char const* _name, char const* _expr, TTree* _tree, bool _silent/* = false*/)

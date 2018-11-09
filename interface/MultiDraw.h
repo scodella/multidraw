@@ -168,17 +168,10 @@ namespace multidraw {
     Cut& findCut_(TString const& cutName) const;
     
     struct SynchTools {
-      enum State {
-        kUndefined,
-        kThreadInitializing,
-        kInitialized,
-        kRunning,
-        kFinalizing
-      };
       std::thread::id mainThread;
       std::mutex mutex;
       std::condition_variable condition;
-      State state{kUndefined};
+      bool mainDone{false};
       std::atomic_ullong totalEvents{0};
     };
 
@@ -204,7 +197,7 @@ namespace multidraw {
     unsigned inputMultiplexing_{1};
     unsigned prescale_{1};
 
-    std::vector<Cut*> cuts_;
+    std::map<TString, Cut*> cuts_;
     std::vector<std::pair<TString, TString>> variables_;
 
     double globalWeight_{1.};
