@@ -1,8 +1,6 @@
 #include "../interface/Plot2DFiller.h"
 #include "../interface/FormulaLibrary.h"
 
-#include "TDirectory.h"
-
 #include <iostream>
 #include <sstream>
 #include <thread>
@@ -47,7 +45,6 @@ multidraw::Plot2DFiller::clone_()
   std::stringstream name;
   name << myHist.GetName() << "_thread" << std::this_thread::get_id();
 
-  TDirectory::TContext(myHist.GetDirectory());
   auto* hist(static_cast<TH2*>(myHist.Clone(name.str().c_str())));
 
   return new Plot2DFiller(*hist, *this);

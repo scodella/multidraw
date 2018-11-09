@@ -1,8 +1,6 @@
 #include "../interface/Plot1DFiller.h"
 #include "../interface/FormulaLibrary.h"
 
-#include "TDirectory.h"
-
 #include <iostream>
 #include <sstream>
 #include <thread>
@@ -59,7 +57,6 @@ multidraw::Plot1DFiller::clone_()
   std::stringstream name;
   name << myHist.GetName() << "_thread" << std::this_thread::get_id();
 
-  TDirectory::TContext(myHist.GetDirectory());
   auto* hist(static_cast<TH1*>(myHist.Clone(name.str().c_str())));
 
   return new Plot1DFiller(*hist, *this);

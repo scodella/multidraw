@@ -244,6 +244,22 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
     SynchTools synchTools;
     synchTools.mainThread = std::this_thread::get_id();
 
+    // threads will clone the histograms; need to disable adding to gDirectory
+    bool currentTH1AddDirectory(TH1::AddDirectoryStatus());
+    TH1::AddDirectory(false);
+
+    // treeOffsets are used in executeOne_ to identify tree transitions and lock the thread
+    // Except: newer versions of ROOT is more thread-safe and does not require this lock
+    Long64_t* treeOffsets(nullptr);
+
+    auto threadTask([this, &treeOffsets, &synchTools](long _nE, long _fE, TChain* _tree, unsigned _treeNumberOffset) {
+#if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
+        this->executeOne_(_nE, _fE, *_tree, _treeNumberOffset, treeOffsets, &synchTools);
+#else
+        this->executeOne_(_nE, _fE, *_tree, _treeNumberOffset, &synchTools);
+#endif
+      });
+
     // arguments for the main thread executeOne
     long nEntriesMain(0);
     unsigned long firstEntryMain(0);
@@ -258,14 +274,6 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
         std::cout << "Splitting task over " << nTrees;
         std::cout << " files in " << inputMultiplexing_ << " threads" << std::endl;
       }
-
-      auto threadTask([this, &synchTools](unsigned _treeNumberOffset, TChain* _tree) {
-#if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
-          this->executeOne_(-1, 0, *_tree, _treeNumberOffset, nullptr, &synchTools, true);
-#else
-          this->executeOne_(-1, 0, *_tree, _treeNumberOffset, &synchTools, true);
-#endif
-      });
 
       unsigned nFilesPerThread(nTrees / inputMultiplexing_);
       // main thread processes the residuals too
@@ -292,7 +300,7 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
         if (threadElist != nullptr)
           tree->SetEntryList(threadElist);
 
-        threads.push_back(new std::thread(threadTask, treeNumberOffset, tree));
+        threads.push_back(new std::thread(threadTask, -1, 0, tree, treeNumberOffset));
         trees.push_back(tree);
       }
 
@@ -322,19 +330,7 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
 
       long long nPerThread(nTotal / inputMultiplexing_);
 
-      Long64_t* treeOffsets(mainTree.GetTreeOffset());
-
-#if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
-      // treeOffsets are used in executeOne_ to identify tree transitions and lock the thread
-      auto threadTask([this, nPerThread, treeOffsets, &synchTools](long _fE, unsigned _treeNumberOffset, TChain* _tree) {
-          this->executeOne_(nPerThread, _fE, *_tree, _treeNumberOffset, treeOffsets, &synchTools);
-      });
-#else
-      // Newer versions of ROOT is more thread-safe and does not require this lock
-      auto threadTask([this, nPerThread, &synchTools](long _fE, unsigned _treeNumberOffset, TChain* _tree) {
-          this->executeOne_(nPerThread, _fE, *_tree, _treeNumberOffset, &synchTools);
-      });
-#endif
+      treeOffsets = mainTree.GetTreeOffset();
 
       long firstEntry(_firstEntry); // first entry in the full chain
       for (unsigned iT(0); iT != inputMultiplexing_ - 1; ++iT) {
@@ -377,7 +373,7 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
         if (threadElist != nullptr)
           tree->SetEntryList(threadElist);
 
-        threads.push_back(new std::thread(threadTask, threadFirstEntry, treeNumberOffset, tree));
+        threads.push_back(new std::thread(threadTask, nPerThread, threadFirstEntry, tree, treeNumberOffset));
         trees.push_back(tree);
 
         firstEntry += nPerThread;
@@ -414,6 +410,8 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
       delete threadElist;
       delete trees[iT];
     }
+
+    TH1::AddDirectory(currentTH1AddDirectory);
 
     totalEvents_ = synchTools.totalEvents;
   }

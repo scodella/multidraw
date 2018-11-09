@@ -94,6 +94,7 @@ multidraw::TreeFiller::clone_()
   std::stringstream name;
   name << myTree.GetName() << "_thread" << std::this_thread::get_id();
 
+  // Thread-unsafe - in newer ROOT versions we can do new TTree(name.str().c_str(), myTree.GetTitle(), 99, myTree.GetDirectory());
   TDirectory::TContext(myTree.GetDirectory());
   auto* tree(new TTree(name.str().c_str(), myTree.GetTitle()));
 
