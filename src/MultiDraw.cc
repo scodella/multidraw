@@ -212,13 +212,17 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
 
   mainTree.SetEntryList(entryList_);
 
+  // This is not needed for single-thread execution, but using this in single-thread makes the code simpler
+  SynchTools synchTools;
+  synchTools.mainThread = std::this_thread::get_id();
+
   if (inputMultiplexing_ <= 1) {
     // Single-thread execution
 
     for (auto* frnd : friendTrees_)
       mainTree.AddFriend(frnd);
 
-    totalEvents_ = executeOne_(_nEntries, _firstEntry, mainTree);
+    totalEvents_ = executeOne_(_nEntries, _firstEntry, mainTree, synchTools);
   }
   else {
     // Multi-thread execution
@@ -241,8 +245,6 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
 
     std::vector<TChain*> trees;
     std::vector<std::thread*> threads;
-    SynchTools synchTools;
-    synchTools.mainThread = std::this_thread::get_id();
 
     // threads will clone the histograms; need to disable adding to gDirectory
     bool currentTH1AddDirectory(TH1::AddDirectoryStatus());
@@ -254,9 +256,9 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
 
     auto threadTask([this, &treeOffsets, &synchTools](long _nE, long _fE, TChain* _tree, unsigned _treeNumberOffset) {
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
-        this->executeOne_(_nE, _fE, *_tree, _treeNumberOffset, treeOffsets, &synchTools);
+        this->executeOne_(_nE, _fE, *_tree, synchTools, _treeNumberOffset, treeOffsets);
 #else
-        this->executeOne_(_nE, _fE, *_tree, _treeNumberOffset, &synchTools);
+        this->executeOne_(_nE, _fE, *_tree, synchTools, _treeNumberOffset);
 #endif
       });
 
@@ -387,9 +389,9 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
     // Started N-1 threads. Process the rest of events (staring from 0) in the main thread
 
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
-    executeOne_(nEntriesMain, firstEntryMain, mainTree, 0, treeOffsetsMain, &synchTools, byTreeMain);
+    executeOne_(nEntriesMain, firstEntryMain, mainTree, synchTools, 0, treeOffsetsMain, byTreeMain);
 #else
-    executeOne_(nEntriesMain, firstEntryMain, mainTree, 0, &synchTools, byTreeMain);
+    executeOne_(nEntriesMain, firstEntryMain, mainTree, synchTools, 0, byTreeMain);
 #endif
 
     {
@@ -448,9 +450,9 @@ double millisec(SteadyClock::duration const& interval)
 
 long
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
-multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TChain& _tree, unsigned _treeNumberOffset/* = 0*/, Long64_t* _treeOffsets/* = nullptr*/, SynchTools* _synchTools/* = nullptr*/, bool _byTree/* = false*/)
+multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TChain& _tree, SynchTools& _synchTools, unsigned _treeNumberOffset/* = 0*/, Long64_t* _treeOffsets/* = nullptr*/, bool _byTree/* = false*/)
 #else
-multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TChain& _tree, unsigned _treeNumberOffset/* = 0*/, SynchTools* _synchTools/* = nullptr*/, bool _byTree/* = false*/)
+multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TChain& _tree, SynchTools& _synchTools, unsigned _treeNumberOffset/* = 0*/, bool _byTree/* = false*/)
 #endif
 {
   // treeNumberOffset: The offset of the given tree with respect to the original
@@ -460,7 +462,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
   SteadyClock::duration eventTimer(SteadyClock::duration::zero());
   SteadyClock::time_point start;
 
-  bool isMainThread(_synchTools == nullptr || std::this_thread::get_id() == _synchTools->mainThread);
+  bool isMainThread(std::this_thread::get_id() == _synchTools.mainThread);
 
   int printLevel(-1);
   bool doTimeProfile(false);
@@ -487,7 +489,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
 
   if (!variables_.empty()) {
     {
-      std::lock_guard<std::mutex> lock(_synchTools->mutex);
+      std::lock_guard<std::mutex> lock(_synchTools.mutex);
       TDirectory::TContext(nullptr);
       variablesTree = new TTree("_variables", "");
     }
@@ -644,7 +646,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     
     if (treeOffsets != nullptr && iEntryNumber >= nextTreeBoundary) {
       // we are crossing a tree boundary in a multi-thread environment
-      std::lock_guard<std::mutex> lock(_synchTools->mutex);
+      std::lock_guard<std::mutex> lock(_synchTools.mutex);
       iLocalEntry = _tree.LoadTree(iEntryNumber);
     }
     else {
@@ -662,14 +664,10 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
 
     // Print progress
     if (iEntry % printEvery == 0) {
-      if (_synchTools != nullptr)
-        _synchTools->totalEvents += printEvery;
+      _synchTools.totalEvents += printEvery;
 
       if (printLevel >= 0) {
-        if (_synchTools == nullptr)
-          (std::cout << "\r      " << iEntry << " events").flush();
-        else
-          (std::cout << "\r      " << _synchTools->totalEvents.load() << " events").flush();
+        (std::cout << "\r      " << _synchTools.totalEvents.load() << " events").flush();
 
         if (printLevel > 2)
           std::cout << std::endl;
@@ -886,8 +884,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
   }
 
   // Add the residual number of events
-  if (_synchTools != nullptr)
-    _synchTools->totalEvents += (iEntry % printEvery);
+  _synchTools.totalEvents += (iEntry % printEvery);
 
   if (printLevel >= 0 && doTimeProfile) {
     double totalTime(millisec(ioTimer) + millisec(eventTimer));
@@ -910,7 +907,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     }
   }
 
-  if (_synchTools == nullptr || std::this_thread::get_id() == _synchTools->mainThread) {
+  if (std::this_thread::get_id() == _synchTools.mainThread) {
     // unlink
 
     for (auto* cut : cuts)
@@ -920,8 +917,8 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     // merge & cleanup
 
     // Again we'll just lock the entire block
-    std::unique_lock<std::mutex> lock(_synchTools->mutex);
-    _synchTools->condition.wait(lock, [_synchTools]() { return _synchTools->mainDone; });
+    std::unique_lock<std::mutex> lock(_synchTools.mutex);
+    _synchTools.condition.wait(lock, [&_synchTools]() { return _synchTools.mainDone; });
 
     // Clone fillers will merge themselves to the main object in the destructor
     for (auto* cut : cuts)
