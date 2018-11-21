@@ -818,7 +818,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
 
     if (variablesTree != nullptr) {
       for (auto& v : variables) {
-        if (v.sourceFormula->GetMultiplicity() == 0) {
+        if (v.nbranch == nullptr) {
           v.sourceFormula->GetNdata();
           v.values[0] = v.sourceFormula->EvalInstance(0);
 
