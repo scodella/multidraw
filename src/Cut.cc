@@ -119,13 +119,15 @@ multidraw::Cut::initialize()
         break;
 
       auto* reweight(filler->getReweight());
-      for (unsigned iD(0); iD != reweight->getNdim(); ++iD) {
-        formulaManager = reweight->getFormula(iD)->GetManager();
+      if (reweight != nullptr) {
+        for (unsigned iD(0); iD != reweight->getNdim(); ++iD) {
+          formulaManager = reweight->getFormula(iD)->GetManager();
+          if (formulaManager != nullptr)
+            break;
+        }
         if (formulaManager != nullptr)
           break;
       }
-      if (formulaManager != nullptr)
-        break;
     }
   }
 
@@ -141,8 +143,10 @@ multidraw::Cut::initialize()
       formulaManager->Add(filler->getFormula(iD));
 
     auto* reweight(filler->getReweight());
-    for (unsigned iD(0); iD != reweight->getNdim(); ++iD)
-      formulaManager->Add(reweight->getFormula(iD));
+    if (reweight != nullptr) {
+      for (unsigned iD(0); iD != reweight->getNdim(); ++iD)
+        formulaManager->Add(reweight->getFormula(iD));
+    }
   }
 
   formulaManager->Sync();
