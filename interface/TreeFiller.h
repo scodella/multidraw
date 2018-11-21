@@ -25,6 +25,8 @@ namespace multidraw {
 
     TTree const& getTree() const { return static_cast<TTree&>(tobj_); }
 
+    unsigned getNdim() const override { return bvalues_.size(); }
+
     static unsigned const NBRANCHMAX = 128;
 
   private:

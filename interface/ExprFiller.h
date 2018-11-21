@@ -31,6 +31,10 @@ namespace multidraw {
     TObject const& getObj() const { return tobj_; }
     TObject& getObj() { return tobj_; }
 
+    virtual unsigned getNdim() const = 0;
+    TTreeFormulaCached* getFormula(unsigned i = 0) const { return compiledExprs_.at(i).get(); }
+    Reweight const* getReweight() const { return compiledReweight_; }
+
     void bindTree(FormulaLibrary&);
     void unlinkTree();
     ExprFiller* threadClone(FormulaLibrary&);

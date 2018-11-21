@@ -24,6 +24,8 @@ namespace multidraw {
 
     TH2 const& getHist() const { return static_cast<TH2&>(tobj_); }
 
+    unsigned getNdim() const override { return 2; }
+
   private:
     Plot2DFiller(TH2& hist, Plot2DFiller const&);
 

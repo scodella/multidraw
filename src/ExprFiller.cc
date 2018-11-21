@@ -1,5 +1,7 @@
 #include "../interface/ExprFiller.h"
+
 #include "TTree.h"
+#include "TTreeFormulaManager.h"
 
 #include <iostream>
 
@@ -68,8 +70,10 @@ multidraw::ExprFiller::threadClone(FormulaLibrary& _library)
 void
 multidraw::ExprFiller::fill(std::vector<double> const& _eventWeights, std::vector<bool> const* _presel/* = nullptr*/)
 {
-  // using the first expr for the number of instances
-  unsigned nD(compiledExprs_.at(0)->GetNdata());
+  // All exprs and reweight exprs share the same manager
+  auto* formulaManager(compiledExprs_.at(0)->GetManager());
+
+  unsigned nD(formulaManager->GetNdata());
   // need to call GetNdata before EvalInstance
   if (printLevel_ > 3)
     std::cout << "          " << getObj().GetName() << "::fill() => " << nD << " iterations" << std::endl;

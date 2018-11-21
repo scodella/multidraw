@@ -10,6 +10,7 @@
 #include "TLeafI.h"
 #include "TLeafL.h"
 #include "TEntryList.h"
+#include "TTreeFormulaManager.h"
 
 #include <stdexcept>
 #include <cstring>
@@ -512,7 +513,17 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
 
       varspec.sourceFormula = formula;
 
-      if (formula->GetMultiplicity() == 0) {
+      // Now compute the multiplicity - here we rely on TTreeFormulaManager which has weird destructor setup
+      // Basically we can't detach a manager from a formula once we've attached it, but we don't want
+      // to permanently attach the manager to our variables formulas because the Cut objects need to be
+      // able to dictate formula managing. Workarond: create a new set of formulas just for multiplicity
+      // calculation.
+      auto* tmpFormula(new TTreeFormula("tmp", expr, &_tree));
+      auto* tmpManager(new TTreeFormulaManager);
+      tmpManager->Add(tmpFormula);
+      tmpManager->Sync();
+
+      if (tmpManager->GetMultiplicity() <= 0) {
         // singlet branch
         varspec.values.resize(1);
         varspec.vbranch = variablesTree->Branch(name, varspec.values.data(), name + "/D");
@@ -524,6 +535,9 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
         varspec.nbranch = variablesTree->Branch("size__" + name, &varspec.nD, "size__" + name + "/i");
         varspec.vbranch = variablesTree->Branch(name, varspec.values.data(), name + "[size__" + name + "]/D");
       }
+
+      // this deletes the manager too
+      delete tmpFormula;
     }
   }
 
@@ -548,6 +562,8 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       cuts[0] = cut;
     else
       cuts.push_back(cut);
+
+    cut->initialize();
   }
 
   if (isMainThread && doTimeProfile)
@@ -620,6 +636,8 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
 
   long nextTreeBoundary(0);
 #endif
+
+  bool filterHasVariables(cuts[0]->cutDependsOn(variablesTree));
 
   long nEntries(_byTree ? -1 : _nEntries);
 
@@ -784,6 +802,20 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       start = SteadyClock::now();
     }
 
+    if (!filterHasVariables) {
+      // Optimization in the case when the global filter does not depend on variables
+
+      bool passFilter(cuts[0]->evaluate());
+
+      if (doTimeProfile) {
+        cutTimers[0] += SteadyClock::now() - start;
+        start = SteadyClock::now();
+      }
+
+      if (!passFilter)
+        continue;
+    }
+
     if (variablesTree != nullptr) {
       for (auto& v : variables) {
         if (v.sourceFormula->GetMultiplicity() == 0) {
@@ -825,16 +857,17 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       }
     }
 
-    // First cut (name "") is a global filter
-    bool passFilter(cuts[0]->evaluate());
+    if (filterHasVariables) {
+      bool passFilter(cuts[0]->evaluate());
 
-    if (doTimeProfile) {
-      cutTimers[0] += SteadyClock::now() - start;
-      start = SteadyClock::now();
+      if (doTimeProfile) {
+        cutTimers[0] += SteadyClock::now() - start;
+        start = SteadyClock::now();
+      }
+
+      if (!passFilter)
+        continue;
     }
-
-    if (!passFilter)
-      continue;
 
     if (weightBranch != nullptr) {
       weightBranch->GetEntry(iLocalEntry);

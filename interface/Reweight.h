@@ -31,7 +31,7 @@ namespace multidraw {
     void reset();
 
     unsigned getNdim() const { return formulas_.size(); }
-    TTreeFormulaCached const* getFormula(unsigned i = 0) const { return formulas_.at(i).get(); }
+    TTreeFormulaCached* getFormula(unsigned i = 0) const { return formulas_.at(i).get(); }
     TObject const* getSource() const { return source_; }
 
     unsigned getNdata();

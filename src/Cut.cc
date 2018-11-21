@@ -1,6 +1,8 @@
 #include "../interface/Cut.h"
 #include "../interface/ExprFiller.h"
 
+#include "TTreeFormulaManager.h"
+
 #include <iostream>
 
 multidraw::Cut::Cut(char const* _name, char const* _expr/* = ""*/) :
@@ -45,11 +47,6 @@ multidraw::Cut::bindTree(FormulaLibrary& _library)
   if (cutExpr_.Length() != 0)
     compiledCut_ = _library.getFormula(cutExpr_);
 
-  delete instanceMask_;
-  instanceMask_ = nullptr;
-  if (compiledCut_ && compiledCut_->GetMultiplicity() != 0)
-    instanceMask_ = new std::vector<bool>;
-
   for (auto* filler : fillers_)
     filler->bindTree(_library);
 }
@@ -80,12 +77,87 @@ multidraw::Cut::threadClone(FormulaLibrary& _library) const
 }
 
 bool
+multidraw::Cut::cutDependsOn(TTree const* _tree) const
+{
+  if (!compiledCut_)
+    return false;
+
+  unsigned iL(0);
+  while (true) {
+    auto* leaf(compiledCut_->GetLeaf(iL++));
+    if (leaf == nullptr)
+      return false;
+
+    if (leaf->GetBranch()->GetTree() == _tree)
+      return true;
+  }
+
+  // won't reach here
+  return false;
+}
+
+void
+multidraw::Cut::initialize()
+{
+  delete instanceMask_;
+  instanceMask_ = nullptr;
+
+  if (!compiledCut_)
+    return;
+
+  // Check if any formula belonging to this cut already has a manager
+  auto* formulaManager(compiledCut_->GetManager());
+
+  if (formulaManager == nullptr) {
+    for (auto* filler : fillers_) {
+      for (unsigned iD(0); iD != filler->getNdim(); ++iD) {
+        formulaManager = filler->getFormula(iD)->GetManager();
+        if (formulaManager != nullptr)
+          break;
+      }
+      if (formulaManager != nullptr)
+        break;
+
+      auto* reweight(filler->getReweight());
+      for (unsigned iD(0); iD != reweight->getNdim(); ++iD) {
+        formulaManager = reweight->getFormula(iD)->GetManager();
+        if (formulaManager != nullptr)
+          break;
+      }
+      if (formulaManager != nullptr)
+        break;
+    }
+  }
+
+  if (formulaManager == nullptr) {
+    // If none has a manager, create new. Manager will be deleted by the last TTreeFormula
+    formulaManager = new TTreeFormulaManager;
+  }
+
+  formulaManager->Add(compiledCut_.get());
+
+  for (auto* filler : fillers_) {
+    for (unsigned iD(0); iD != filler->getNdim(); ++iD)
+      formulaManager->Add(filler->getFormula(iD));
+
+    auto* reweight(filler->getReweight());
+    for (unsigned iD(0); iD != reweight->getNdim(); ++iD)
+      formulaManager->Add(reweight->getFormula(iD));
+  }
+
+  formulaManager->Sync();
+
+  if (formulaManager->GetMultiplicity() > 0)
+    instanceMask_ = new std::vector<bool>;
+}
+
+bool
 multidraw::Cut::evaluate()
 {
   if (!compiledCut_)
     return true;
 
-  unsigned nD(compiledCut_->GetNdata());
+  unsigned nD(compiledCut_->GetManager()->GetNdata());
 
   if (instanceMask_ != nullptr)
     instanceMask_->assign(nD, false);

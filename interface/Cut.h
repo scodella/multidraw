@@ -32,6 +32,9 @@ namespace multidraw {
     void unlinkTree();
     Cut* threadClone(FormulaLibrary&) const;
 
+    bool cutDependsOn(TTree const*) const;
+
+    void initialize();
     bool evaluate();
     void fillExprs(std::vector<double> const& eventWeights);
 
