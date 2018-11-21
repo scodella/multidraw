@@ -790,6 +790,9 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
           v.sourceFormula->GetNdata();
           v.values[0] = v.sourceFormula->EvalInstance(0);
 
+          if (printLevel > 3)
+            std::cout << "        Variable " << v.vbranch->GetName() << ": static value " << v.values[0] << std::endl;
+
           v.vbranch->Fill();
         }
         else {
@@ -804,6 +807,17 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
 
           for (unsigned iD(0); iD != v.nD; ++iD)
             v.values[iD] = v.sourceFormula->EvalInstance(iD);
+
+          if (printLevel > 3) {
+            std::cout << "        Variable " << v.vbranch->GetName() << ": dynamic size " << v.nD;
+            std::cout << " values [";
+            for (unsigned iD(0); iD != v.nD; ++iD) {
+              std::cout << v.values[iD];
+              if (iD != v.nD - 1)
+                std::cout << ", ";
+            }
+            std::cout << "]" << std::endl;
+          }
 
           v.nbranch->Fill();
           v.vbranch->Fill();
