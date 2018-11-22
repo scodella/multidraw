@@ -21,17 +21,26 @@ class TObjArray;
  */
 class TTreeFormulaCached : public TTreeFormula {
 public:
-  TTreeFormulaCached(char const* name, char const* formula, TTree* tree) : TTreeFormula(name, formula, tree) {}
+  struct Cache {
+    Int_t fNdata{-1};
+    std::vector<std::pair<Bool_t, Double_t>> fValues{};
+  };
+
+  typedef std::shared_ptr<Cache> CachePtr;
+
+  TTreeFormulaCached(char const* name, char const* formula, TTree* tree, CachePtr const& = nullptr);
+  TTreeFormulaCached(TTreeFormulaCached const&);
   ~TTreeFormulaCached() {}
+
+  TTreeFormulaCached& operator=(TTreeFormulaCached const&);
 
   Int_t GetNdata()/* override*/;
   Double_t EvalInstance(Int_t, char const* [] = nullptr)/* override*/;
 
-  void ResetCache() { fNdataCache = -1; }
+  std::shared_ptr<Cache> const& GetCache() const { return fCache; }
 
 private:
-  Int_t fNdataCache{-1};
-  std::vector<std::pair<Bool_t, Double_t>> fCache{};
+  CachePtr fCache;
 
   ClassDef(TTreeFormulaCached, 1)
 };
@@ -54,6 +63,6 @@ typedef std::shared_ptr<TTreeFormulaCached> TTreeFormulaCachedPtr;
 TTreeFormula* NewTTreeFormula(char const* name, char const* expr, TTree*, bool silent = false);
 
 //! Create a TTreeFormulaCached with error handling
-TTreeFormulaCached* NewTTreeFormulaCached(char const* name, char const* expr, TTree*, bool silent = false);
+TTreeFormulaCached* NewTTreeFormulaCached(char const* name, char const* expr, TTree*, TTreeFormulaCached::CachePtr const&, bool silent = false);
 
 #endif

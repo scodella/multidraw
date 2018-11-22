@@ -2,6 +2,7 @@
 
 #include "TSpline.h"
 #include "TClass.h"
+#include "TTreeFormulaManager.h"
 
 multidraw::Reweight::Reweight(TTreeFormulaCachedPtr const& _formula)
 {
@@ -13,45 +14,9 @@ multidraw::Reweight::Reweight(TObject const& _source, TTreeFormulaCachedPtr cons
   set(_source, _x, _y, _z);
 }
 
-multidraw::Reweight::Reweight(Reweight const& _orig) :
-  formulas_(_orig.formulas_),
-  source_(_orig.source_)
-{
-  if (formulas_.size() == 0)
-    return;
-  else if (source_ == nullptr)
-    setRaw_();
-  else if (source_->InheritsFrom(TH1::Class()))
-    setTH1_();
-  else if (source_->InheritsFrom(TGraph::Class()))
-    setTGraph_();
-  else if (source_->InheritsFrom(TF1::Class()))
-    setTF1_();
-}
-
 multidraw::Reweight::~Reweight()
 {
   delete spline_;
-}
-
-multidraw::Reweight&
-multidraw::Reweight::operator=(Reweight const& _rhs)
-{
-  formulas_ = _rhs.formulas_;
-  source_ = _rhs.source_;
-
-  if (formulas_.size() == 0)
-    return *this;
-  else if (source_ == nullptr)
-    setRaw_();
-  else if (source_->InheritsFrom(TH1::Class()))
-    setTH1_();
-  else if (source_->InheritsFrom(TGraph::Class()))
-    setTGraph_();
-  else if (source_->InheritsFrom(TF1::Class()))
-    setTF1_();
-
-  return *this;
 }
 
 void
@@ -70,6 +35,14 @@ multidraw::Reweight::set(TObject const& _source, TTreeFormulaCachedPtr const& _x
     formulas_.push_back(_y);
   if (_z)
     formulas_.push_back(_z);
+
+  if (formulas_.size() != 1) {
+    auto* manager(formulas_[0]->GetManager());
+    for (unsigned iF(1); iF != formulas_.size(); ++iF)
+      manager->Add(formulas_[iF].get());
+
+    manager->Sync();
+  }
 
   source_ = &_source;
   if (source_->InheritsFrom(TH1::Class()))
@@ -95,12 +68,10 @@ multidraw::Reweight::reset()
 unsigned
 multidraw::Reweight::getNdata()
 {
-  if (formulas_.size() == 0)
+  if (formulas_.empty())
     return 1;
-  else {
-    // use the first dimension
-    return formulas_[0]->GetNdata();
-  }
+  else
+    return formulas_[0]->GetManager()->GetNdata();
 }
 
 void

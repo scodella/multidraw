@@ -2,7 +2,6 @@
 #define multidraw_Reweight_h
 
 #include "TTreeFormulaCached.h"
-#include "FormulaLibrary.h"
 
 #include "TH1.h"
 #include "TGraph.h"
@@ -19,9 +18,7 @@ namespace multidraw {
     Reweight() {}
     Reweight(TTreeFormulaCachedPtr const&);
     Reweight(TObject const&, TTreeFormulaCachedPtr const&, TTreeFormulaCachedPtr const& = nullptr, TTreeFormulaCachedPtr const& = nullptr);
-    Reweight(Reweight const&);
     ~Reweight();
-    Reweight& operator=(Reweight const&);
 
     //! Set the tree formula to reweight with.
     void set(TTreeFormulaCachedPtr const& formula);

@@ -48,7 +48,7 @@ namespace multidraw {
     unsigned counter_{0};
 
     std::vector<bool>* instanceMask_{nullptr};
-    TTreeFormulaCachedPtr compiledCut_{};
+    TTreeFormulaCachedPtr compiledCut_{nullptr};
   };
 
 }

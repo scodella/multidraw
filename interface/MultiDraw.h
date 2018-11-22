@@ -1,14 +1,10 @@
 #ifndef multidraw_MultiDraw_h
 #define multidraw_MultiDraw_h
 
-#include "TTreeFormulaCached.h"
-#include "ExprFiller.h"
 #include "Plot1DFiller.h"
 #include "Plot2DFiller.h"
 #include "TreeFiller.h"
 #include "Cut.h"
-#include "Reweight.h"
-#include "FormulaLibrary.h"
 
 #include "TChain.h"
 #include "TH1.h"
