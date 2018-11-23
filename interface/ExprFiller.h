@@ -39,6 +39,7 @@ namespace multidraw {
     void unlinkTree();
     ExprFiller* threadClone(FormulaLibrary&);
 
+    void initialize();
     void fill(std::vector<double> const& eventWeights, std::vector<bool> const* = nullptr);
 
     //! Merge the underlying object into the main-thread object

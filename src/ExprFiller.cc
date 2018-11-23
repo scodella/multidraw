@@ -39,6 +39,7 @@ void
 multidraw::ExprFiller::bindTree(FormulaLibrary& _library)
 {
   compiledExprs_.clear();
+
   for (auto& expr : exprs_)
     compiledExprs_.push_back(_library.getFormula(expr));
 
@@ -53,6 +54,7 @@ void
 multidraw::ExprFiller::unlinkTree()
 {
   compiledExprs_.clear();
+
   delete compiledReweight_;
   compiledReweight_ = nullptr;
 }
@@ -68,13 +70,25 @@ multidraw::ExprFiller::threadClone(FormulaLibrary& _library)
 }
 
 void
+multidraw::ExprFiller::initialize()
+{
+  if (compiledExprs_.empty()) // cannot be
+    return;
+
+  // Manage all dimensions with a single manager
+  auto* manager(compiledExprs_.at(0)->GetManager());
+  for (unsigned iE(1); iE != compiledExprs_.size(); ++iE)
+    manager->Add(compiledExprs_[iE].get());
+
+  manager->Sync();
+}
+
+void
 multidraw::ExprFiller::fill(std::vector<double> const& _eventWeights, std::vector<bool> const* _presel/* = nullptr*/)
 {
   // All exprs and reweight exprs share the same manager
-  auto* formulaManager(compiledExprs_.at(0)->GetManager());
+  unsigned nD(compiledExprs_.at(0)->GetNdata());
 
-  unsigned nD(formulaManager->GetNdata());
-  // need to call GetNdata before EvalInstance
   if (printLevel_ > 3)
     std::cout << "          " << getObj().GetName() << "::fill() => " << nD << " iterations" << std::endl;
 

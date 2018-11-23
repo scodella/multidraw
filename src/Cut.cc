@@ -55,6 +55,7 @@ void
 multidraw::Cut::unlinkTree()
 {
   compiledCut_.reset();
+
   delete instanceMask_;
   instanceMask_ = nullptr;
 
@@ -105,54 +106,17 @@ multidraw::Cut::initialize()
   if (!compiledCut_)
     return;
 
-  // Check if any formula belonging to this cut already has a manager
+  // Each formula object has a default manager
   auto* formulaManager(compiledCut_->GetManager());
-
-  if (formulaManager == nullptr) {
-    for (auto* filler : fillers_) {
-      for (unsigned iD(0); iD != filler->getNdim(); ++iD) {
-        formulaManager = filler->getFormula(iD)->GetManager();
-        if (formulaManager != nullptr)
-          break;
-      }
-      if (formulaManager != nullptr)
-        break;
-
-      auto* reweight(filler->getReweight());
-      if (reweight != nullptr) {
-        for (unsigned iD(0); iD != reweight->getNdim(); ++iD) {
-          formulaManager = reweight->getFormula(iD)->GetManager();
-          if (formulaManager != nullptr)
-            break;
-        }
-        if (formulaManager != nullptr)
-          break;
-      }
-    }
-  }
-
-  if (formulaManager == nullptr) {
-    // If none has a manager, create new. Manager will be deleted by the last TTreeFormula
-    formulaManager = new TTreeFormulaManager;
-  }
-
-  formulaManager->Add(compiledCut_.get());
-
-  for (auto* filler : fillers_) {
-    for (unsigned iD(0); iD != filler->getNdim(); ++iD)
-      formulaManager->Add(filler->getFormula(iD));
-
-    auto* reweight(filler->getReweight());
-    if (reweight != nullptr) {
-      for (unsigned iD(0); iD != reweight->getNdim(); ++iD)
-        formulaManager->Add(reweight->getFormula(iD));
-    }
-  }
 
   formulaManager->Sync();
 
+  // multiplicity > 0 -> we are dealing with an array
   if (formulaManager->GetMultiplicity() > 0)
     instanceMask_ = new std::vector<bool>;
+
+  for (auto* filler : fillers_)
+    filler->initialize();
 }
 
 bool
@@ -161,7 +125,7 @@ multidraw::Cut::evaluate()
   if (!compiledCut_)
     return true;
 
-  unsigned nD(compiledCut_->GetManager()->GetNdata());
+  unsigned nD(compiledCut_->GetNdata());
 
   if (instanceMask_ != nullptr)
     instanceMask_->assign(nD, false);

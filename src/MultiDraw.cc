@@ -488,6 +488,8 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
   TTree* variablesTree(nullptr);
   std::vector<VariableSpec> variables;
 
+  //int const maxTreeSize(100);
+
   if (!variables_.empty()) {
     {
       std::lock_guard<std::mutex> lock(_synchTools.mutex);
@@ -495,11 +497,11 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       variablesTree = new TTree("_variables", "");
     }
 
-    variablesTree->SetCircular(10000); // buffer size 10000 to have fewer cycles
-
     _tree.AddFriend(variablesTree);
 
     variables.reserve(variables_.size());
+
+    std::vector<TString> negativeMultiplicity;
 
     // Adding variables in given order - variables dependent on others must be declared in order
     for (auto& v : variables_) {
@@ -513,31 +515,41 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
 
       varspec.sourceFormula = formula;
 
-      // Now compute the multiplicity - here we rely on TTreeFormulaManager which has weird destructor setup
-      // Basically we can't detach a manager from a formula once we've attached it, but we don't want
-      // to permanently attach the manager to our variables formulas because the Cut objects need to be
-      // able to dictate formula managing. Workarond: create a new set of formulas just for multiplicity
-      // calculation.
-      auto* tmpFormula(new TTreeFormula("tmp", expr, &_tree));
-      auto* tmpManager(new TTreeFormulaManager);
-      tmpManager->Add(tmpFormula);
-      tmpManager->Sync();
+      auto* formulaManager(formula->GetManager());
+      formulaManager->Sync();
 
-      if (tmpManager->GetMultiplicity() <= 0) {
+      if (formulaManager->GetMultiplicity() == 0) {
         // singlet branch
         varspec.values.resize(1);
         varspec.vbranch = variablesTree->Branch(name, varspec.values.data(), name + "/D");
       }
       else {
+        if (formulaManager->GetMultiplicity() < 0)
+          negativeMultiplicity.push_back(name);
+
+        // multiplicity > 0 or -1 -> number of values may change (case -1: either 0 or 1)
         // give some reasonable initial size
         varspec.values.resize(64);
         // array, or expression composed of dynamic array elements
         varspec.nbranch = variablesTree->Branch("size__" + name, &varspec.nD, "size__" + name + "/i");
         varspec.vbranch = variablesTree->Branch(name, varspec.values.data(), name + "[size__" + name + "]/D");
       }
+    }
 
-      // this deletes the manager too
-      delete tmpFormula;
+    if (!negativeMultiplicity.empty()) {
+      TString names;
+      for (unsigned iS(0); iS != negativeMultiplicity.size(); ++iS) {
+        names += negativeMultiplicity[iS];
+        if (iS != negativeMultiplicity.size() - 1)
+          names += ", ";
+      }
+
+      if (printLevel >= 1) {
+        std::cout << " Variables " << names << " are singlets but are represented as arrays";
+        std::cout << " within MultiDraw. Use index [0] whenever using the variable to ensure";
+        std::cout << " we don't try to iterate over the values, especially in an expression";
+        std::cout << " used for cuts." << std::endl;
+      }
     }
   }
 
@@ -581,7 +593,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
   }
 
   for (auto& tr : treeReweightSources_) {
-    auto& formula(library.getFormula(std::get<0>(tr.second)));
+    auto formula(library.getFormula(std::get<0>(tr.second)));
     if (std::get<1>(tr.second) == nullptr)
       treeReweights[tr.first] = std::make_pair(new Reweight(formula), std::get<2>(tr.second));
     else
@@ -642,9 +654,9 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
   long nEntries(_byTree ? -1 : _nEntries);
 
   long printEvery(100000);
-  if (printLevel_ == 3)
+  if (printLevel == 3)
     printEvery = 1000;
-  else if (printLevel_ >= 4)
+  else if (printLevel >= 4)
     printEvery = 1;
 
   if (printLevel >= 0)
@@ -759,8 +771,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       }
 
       // Underlying tree changed; formulas must update their pointers
-      for (auto& ff : library)
-        ff.second->UpdateFormulaLeaves();
+      library.updateFormulaLeaves();
 
       // Constant overall tree weights
       auto wItr(treeWeights_.find(treeNumber + _treeNumberOffset));
@@ -794,8 +805,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     }
 
     // Reset formula cache
-    for (auto& ff : library)
-      ff.second->ResetCache();
+    library.resetCache();
 
     if (doTimeProfile) {
       ioTimer += SteadyClock::now() - start;
@@ -817,6 +827,11 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     }
 
     if (variablesTree != nullptr) {
+      // Need to set fReadEntry to the current number first for variables dependent on other variables to work
+      // Need to set fEntries before fReadEntry (the latter has to be always smaller than the former)
+      variablesTree->SetEntries(variablesTree->GetEntries() + 1);
+      variablesTree->LoadTree(variablesTree->GetEntries() - 1);
+
       for (auto& v : variables) {
         if (v.nbranch == nullptr) {
           v.sourceFormula->GetNdata();
@@ -855,6 +870,20 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
           v.vbranch->Fill();
         }
       }
+      
+      // tree KeepCircular is a protected method
+      // it essentially does the following to keep the in-memory buffer finite
+      // buffer size 10000 to have fewer cycles
+      // NEVER MIND THIS SEGFAULTS FOR WHATEVER REASON - 22.11.2018
+      // if (variablesTree->GetEntries() > maxTreeSize) {
+      //   int newSize(maxTreeSize - maxTreeSize / 10);
+      //   for (auto& v : variables) {
+      //     v.vbranch->KeepCircular(newSize);
+      //     if (v.nbranch != nullptr)
+      //       v.nbranch->KeepCircular(newSize);
+      //   }
+      //   variablesTree->SetEntries(newSize);
+      // }
     }
 
     if (filterHasVariables) {

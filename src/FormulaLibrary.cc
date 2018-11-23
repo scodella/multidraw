@@ -8,15 +8,16 @@ multidraw::FormulaLibrary::FormulaLibrary(TTree& _tree) :
 {
 }
 
-TTreeFormulaCachedPtr const&
+TTreeFormulaCachedPtr
 multidraw::FormulaLibrary::getFormula(char const* _expr, bool _silent/* = false*/)
 {
-  auto fItr(this->find(_expr));
-  if (fItr != this->end()) {
-    return fItr->second;
-  }
+  std::shared_ptr<TTreeFormulaCached::Cache> cache;
 
-  auto* formula(NewTTreeFormulaCached("formula", _expr, &tree_, _silent));
+  auto fItr(caches_.find(_expr));
+  if (fItr != caches_.end())
+    cache = fItr->second;
+
+  auto* formula(NewTTreeFormulaCached("formula", _expr, &tree_, cache, _silent));
   if (formula == nullptr) {
     std::stringstream ss;
     ss << "Failed to compile expression \"" << _expr << "\"";
@@ -25,22 +26,37 @@ multidraw::FormulaLibrary::getFormula(char const* _expr, bool _silent/* = false*
     throw std::invalid_argument(ss.str());
   }
 
-  fItr = this->emplace(TString(_expr), TTreeFormulaCachedPtr(formula)).first;
+  if (fItr == caches_.end())
+    caches_.emplace(TString(_expr), formula->GetCache());
 
-  return fItr->second;
+  TTreeFormulaCachedPtr ptr(formula);
+  formulas_.emplace_back(ptr);
+
+  return ptr;
+}
+
+void
+multidraw::FormulaLibrary::updateFormulaLeaves()
+{
+  for (auto& form : formulas_)
+    form.lock()->UpdateFormulaLeaves();
+}
+
+void
+multidraw::FormulaLibrary::resetCache()
+{
+  for (auto& ec : caches_)
+    ec.second->fNdata = -1;
 }
 
 void
 multidraw::FormulaLibrary::prune()
 {
-  auto fItr(this->begin());
-  while (fItr != this->end()) {
-    auto next(fItr);
-    ++next;
-
-    if (fItr->second.use_count() == 1)
-      this->erase(fItr);
-
-    fItr = next;
+  auto itr(formulas_.begin());
+  while (itr != formulas_.end()) {
+    if (itr->expired())
+      itr = formulas_.erase(itr);
+    else
+      ++itr;
   }
 }
