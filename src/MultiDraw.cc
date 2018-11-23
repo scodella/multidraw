@@ -488,6 +488,8 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
   TTree* variablesTree(nullptr);
   std::vector<VariableSpec> variables;
 
+  //int const maxTreeSize(100);
+
   if (!variables_.empty()) {
     {
       std::lock_guard<std::mutex> lock(_synchTools.mutex);
@@ -542,10 +544,12 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
           names += ", ";
       }
 
-      std::cout << "Variables " << names << " are singlets but are represented as arrays";
-      std::cout << " within MultiDraw. Use index [0] whenever using the variable to ensure";
-      std::cout << " we don't try to iterate over the values, especially in an expression";
-      std::cout << " used for cuts." << std::endl;
+      if (printLevel >= 1) {
+        std::cout << " Variables " << names << " are singlets but are represented as arrays";
+        std::cout << " within MultiDraw. Use index [0] whenever using the variable to ensure";
+        std::cout << " we don't try to iterate over the values, especially in an expression";
+        std::cout << " used for cuts." << std::endl;
+      }
     }
   }
 
@@ -650,9 +654,9 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
   long nEntries(_byTree ? -1 : _nEntries);
 
   long printEvery(100000);
-  if (printLevel_ == 3)
+  if (printLevel == 3)
     printEvery = 1000;
-  else if (printLevel_ >= 4)
+  else if (printLevel >= 4)
     printEvery = 1;
 
   if (printLevel >= 0)
@@ -823,6 +827,11 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     }
 
     if (variablesTree != nullptr) {
+      // Need to set fReadEntry to the current number first for variables dependent on other variables to work
+      // Need to set fEntries before fReadEntry (the latter has to be always smaller than the former)
+      variablesTree->SetEntries(variablesTree->GetEntries() + 1);
+      variablesTree->LoadTree(variablesTree->GetEntries() - 1);
+
       for (auto& v : variables) {
         if (v.nbranch == nullptr) {
           v.sourceFormula->GetNdata();
@@ -862,21 +871,19 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
         }
       }
       
-      variablesTree->SetEntries();
-
       // tree KeepCircular is a protected method
       // it essentially does the following to keep the in-memory buffer finite
       // buffer size 10000 to have fewer cycles
-      if (variablesTree->GetEntries() > 10000) {
-        for (auto& v : variables) {
-          v.vbranch->KeepCircular(1);
-          if (v.nbranch != nullptr)
-            v.nbranch->KeepCircular(1);
-        }
-        variablesTree->SetEntries(1);
-      }
-
-      variablesTree->LoadTree(variablesTree->GetEntries() - 1);
+      // NEVER MIND THIS SEGFAULTS FOR WHATEVER REASON - 22.11.2018
+      // if (variablesTree->GetEntries() > maxTreeSize) {
+      //   int newSize(maxTreeSize - maxTreeSize / 10);
+      //   for (auto& v : variables) {
+      //     v.vbranch->KeepCircular(newSize);
+      //     if (v.nbranch != nullptr)
+      //       v.nbranch->KeepCircular(newSize);
+      //   }
+      //   variablesTree->SetEntries(newSize);
+      // }
     }
 
     if (filterHasVariables) {

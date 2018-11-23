@@ -125,7 +125,7 @@ multidraw::Cut::evaluate()
   if (!compiledCut_)
     return true;
 
-  unsigned nD(compiledCut_->GetManager()->GetNdata());
+  unsigned nD(compiledCut_->GetNdata());
 
   if (instanceMask_ != nullptr)
     instanceMask_->assign(nD, false);
@@ -134,9 +134,6 @@ multidraw::Cut::evaluate()
     std::cout << "        " << getName() << " has " << nD << " iterations" << std::endl;
 
   bool any(false);
-
-  // need to call GetNdata to have the leaves loaded
-  compiledCut_->GetNdata();
 
   for (unsigned iD(0); iD != nD; ++iD) {
     if (compiledCut_->EvalInstance(iD) == 0.)
