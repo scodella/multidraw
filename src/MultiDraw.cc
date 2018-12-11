@@ -449,6 +449,11 @@ double millisec(SteadyClock::duration const& interval)
   return std::chrono::duration_cast<std::chrono::nanoseconds>(interval).count() * 1.e-6;
 }
 
+// Global to be used by functions executed within expressions
+namespace multidraw {
+  thread_local TTree* currentTree{nullptr};
+}
+
 long
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
 multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TChain& _tree, SynchTools& _synchTools, unsigned _treeNumberOffset/* = 0*/, Long64_t* _treeOffsets/* = nullptr*/, bool _byTree/* = false*/)
@@ -472,6 +477,8 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     printLevel = printLevel_;
     doTimeProfile = doTimeProfile_;
   }
+
+  currentTree = &_tree;
 
   // Create the repository of all TTreeFormulas
   FormulaLibrary library(_tree);
