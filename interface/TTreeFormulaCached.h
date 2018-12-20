@@ -7,22 +7,15 @@
 #include <utility>
 #include <memory>
 
-class TObjArray;
-
 //! Cached version of TTreeFormula.
 /*!
- * User of this class must first call ResetCache() and GetNdata() in the order to properly
- * access the instance value. Value of fNdataCache is returned for the second and subsequent
- * calls to GetNdata(). Instances are evaluated and cached at the first call of EvalInstance()
- * for the respective indices.
- *
+ * Only the expression values are cached. GetNdata() must be called before calls to EvalInstance.
  * Note: override keyword in this class definition is commented out to avoid getting compiler
  * warnings (-Winconsistent-missing-override).
  */
 class TTreeFormulaCached : public TTreeFormula {
 public:
   struct Cache {
-    Int_t fNdata{-1};
     std::vector<std::pair<Bool_t, Double_t>> fValues{};
   };
 

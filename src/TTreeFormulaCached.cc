@@ -15,12 +15,12 @@ TTreeFormulaCached::TTreeFormulaCached(char const* _name, char const* _formula, 
 Int_t
 TTreeFormulaCached::GetNdata()
 {
-  if (fCache->fNdata < 0) {
-    fCache->fNdata = TTreeFormula::GetNdata();
-    fCache->fValues.assign(fCache->fNdata, std::pair<Bool_t, Double_t>(false, 0.));
-  }
+  Int_t ndata(TTreeFormula::GetNdata());
 
-  return fCache->fNdata;
+  if (fCache->fValues.empty())
+    fCache->fValues.assign(ndata, std::pair<Bool_t, Double_t>(false, 0.));
+
+  return ndata;
 }
 
 Double_t
