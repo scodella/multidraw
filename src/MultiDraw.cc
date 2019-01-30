@@ -328,8 +328,10 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
     // arguments for the main thread executeOne
     long nEntriesMain(0);
     unsigned long firstEntryMain(0);
-    Long64_t* treeOffsetsMain(nullptr);
     bool byTreeMain(false);
+#if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
+    Long64_t* treeOffsetsMain(nullptr);
+#endif
 
     if (_nEntries == -1 && _firstEntry == 0 && nTrees > inputMultiplexing_) {
       // If there are more trees than threads and we are not limiting the number of entries to process,
@@ -446,7 +448,9 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
       
       nEntriesMain = nTotal - (firstEntry - _firstEntry);
       firstEntryMain = firstEntry;
+#if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
       treeOffsetsMain = treeOffsets;
+#endif
     }
 
     // Started N-1 threads. Process the rest of events (staring from 0) in the main thread
@@ -543,7 +547,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
   currentTree = &_tree;
 
   // Create the repository of all TTreeFormulas
-  FormulaLibrary library(_tree);
+  FormulaLibrary library(*currentTree);
 
   // If we have custom-defined variables, must compile them before cuts and fillers refer to them
   struct VariableSpec {

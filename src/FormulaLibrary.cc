@@ -46,7 +46,7 @@ void
 multidraw::FormulaLibrary::resetCache()
 {
   for (auto& ec : caches_)
-    ec.second->fNdata = -1;
+    ec.second->fValues.clear();
 }
 
 void
