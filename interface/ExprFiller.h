@@ -40,7 +40,7 @@ namespace multidraw {
     ExprFiller* threadClone(FormulaLibrary&);
 
     void initialize();
-    void fill(std::vector<double> const& eventWeights, std::vector<bool> const* = nullptr);
+    void fill(std::vector<double> const& eventWeights, std::vector<int> const& categories);
 
     //! Merge the underlying object into the main-thread object
     void mergeBack();
@@ -51,7 +51,7 @@ namespace multidraw {
     // Special copy constructor for cloning
     ExprFiller(TObject&, ExprFiller const&);
 
-    virtual void doFill_(unsigned) = 0;
+    virtual void doFill_(unsigned, int = -1) = 0;
     virtual ExprFiller* clone_() = 0;
     virtual void mergeBack_() = 0;
 

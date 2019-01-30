@@ -4,6 +4,7 @@
 #include "ExprFiller.h"
 
 #include "TH2.h"
+#include "TObjArray.h"
 
 namespace multidraw {
 
@@ -19,19 +20,24 @@ namespace multidraw {
   class Plot2DFiller : public ExprFiller {
   public:
     Plot2DFiller(TH2& hist, char const* xexpr, char const* yexpr, char const* reweight = "");
+    Plot2DFiller(TObjArray& histlist, char const* xexpr, char const* yexpr, char const* reweight = "");
     Plot2DFiller(Plot2DFiller const&);
     ~Plot2DFiller() {}
 
-    TH2 const& getHist() const { return static_cast<TH2&>(tobj_); }
+    TH2 const& getHist(int icat = -1) const;
+    TH2& getHist(int icat = -1);
 
     unsigned getNdim() const override { return 2; }
 
   private:
     Plot2DFiller(TH2& hist, Plot2DFiller const&);
+    Plot2DFiller(TObjArray& histlist, Plot2DFiller const&);
 
-    void doFill_(unsigned) override;
+    void doFill_(unsigned, int icat = -1) override;
     ExprFiller* clone_() override;
     void mergeBack_() override;
+
+    bool categorized_{false};
   };
 
 }

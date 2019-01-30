@@ -26,6 +26,10 @@ namespace multidraw {
     void setCutExpr(char const* expr) { cutExpr_ = expr; }
     TString const& getCutExpr() const { return cutExpr_; }
 
+    void addCategory(char const* expr) { categoryExprs_.emplace_back(expr); }
+    void setCategorization(char const* expr);
+    int getNCategories() const;
+
     void addFiller(ExprFiller& _filler) { fillers_.push_back(&_filler); }
 
     void bindTree(FormulaLibrary&);
@@ -43,12 +47,16 @@ namespace multidraw {
   protected:
     TString name_{""};
     TString cutExpr_{""};
+    std::vector<TString> categoryExprs_{};
+    TString categorizationExpr_{""};
     std::vector<ExprFiller*> fillers_{};
     int printLevel_{0};
     unsigned counter_{0};
 
-    std::vector<bool>* instanceMask_{nullptr};
+    std::vector<int> categoryIndex_;
     TTreeFormulaCachedPtr compiledCut_{nullptr};
+    std::vector<TTreeFormulaCachedPtr> compiledCategories_{};
+    TTreeFormulaCachedPtr compiledCategorization_{};
   };
 
 }

@@ -39,6 +39,22 @@ multidraw::Cut::setPrintLevel(int _l)
 }
 
 void
+multidraw::Cut::setCategorization(char const* _expr)
+{
+  categoryExprs_.clear();
+  categorizationExpr_ = _expr;
+}
+
+int
+multidraw::Cut::getNCategories() const
+{
+  if (categorizationExpr_.Length() != 0)
+    return -1; // unknown
+  else
+    return categoryExprs_.size();
+}
+
+void
 multidraw::Cut::bindTree(FormulaLibrary& _library)
 {
   counter_ = 0;
@@ -46,6 +62,14 @@ multidraw::Cut::bindTree(FormulaLibrary& _library)
   compiledCut_.reset();
   if (cutExpr_.Length() != 0)
     compiledCut_ = _library.getFormula(cutExpr_);
+
+  if (categorizationExpr_.Length() != 0)
+    compiledCategorization_ = _library.getFormula(categorizationExpr_);
+  else {
+    compiledCategories_.clear();
+    for (auto& expr : categoryExprs_)
+      compiledCategories_.push_back(_library.getFormula(expr));
+  }
 
   for (auto* filler : fillers_)
     filler->bindTree(_library);
@@ -56,8 +80,8 @@ multidraw::Cut::unlinkTree()
 {
   compiledCut_.reset();
 
-  delete instanceMask_;
-  instanceMask_ = nullptr;
+  compiledCategorization_.reset();
+  compiledCategories_.clear();
 
   for (auto* filler : fillers_)
     filler->unlinkTree();
@@ -68,6 +92,13 @@ multidraw::Cut::threadClone(FormulaLibrary& _library) const
 {
   Cut* clone(new Cut(name_, cutExpr_));
   clone->setPrintLevel(-1);
+
+  if (categorizationExpr_.Length() != 0)
+    clone->setCategorization(categorizationExpr_);
+  else {
+    for (auto& expr : categoryExprs_)
+      clone->addCategory(expr);
+  }
 
   for (auto* filler : fillers_)
     clone->addFiller(*filler->threadClone(_library));
@@ -87,33 +118,55 @@ multidraw::Cut::cutDependsOn(TTree const* _tree) const
   while (true) {
     auto* leaf(compiledCut_->GetLeaf(iL++));
     if (leaf == nullptr)
-      return false;
+      break;
 
     if (leaf->GetBranch()->GetTree() == _tree)
       return true;
   }
 
-  // won't reach here
+  if (compiledCategorization_) {
+    iL = 0;
+    while (true) {
+      auto* leaf(compiledCategorization_->GetLeaf(iL++));
+      if (leaf == nullptr)
+        break;
+
+      if (leaf->GetBranch()->GetTree() == _tree)
+        return true;
+    }
+  }
+
+  for (auto& cat : compiledCategories_) {
+    iL = 0;
+    while (true) {
+      auto* leaf(cat->GetLeaf(iL++));
+      if (leaf == nullptr)
+        break;
+
+      if (leaf->GetBranch()->GetTree() == _tree)
+        return true;
+    }
+  }
+
   return false;
 }
 
 void
 multidraw::Cut::initialize()
 {
-  delete instanceMask_;
-  instanceMask_ = nullptr;
-
   if (!compiledCut_)
     return;
 
   // Each formula object has a default manager
   auto* formulaManager(compiledCut_->GetManager());
+  if (compiledCategorization_)
+    formulaManager->Add(compiledCategorization_.get());
+  else {
+    for (auto& cat : compiledCategories_)
+      formulaManager->Add(cat.get());
+  }
 
   formulaManager->Sync();
-
-  // multiplicity > 0 -> we are dealing with an array
-  if (formulaManager->GetMultiplicity() > 0)
-    instanceMask_ = new std::vector<bool>;
 
   for (auto* filler : fillers_)
     filler->initialize();
@@ -126,9 +179,18 @@ multidraw::Cut::evaluate()
     return true;
 
   unsigned nD(compiledCut_->GetNdata());
+  if (compiledCategorization_) {
+    compiledCategorization_->GetNdata();
+    compiledCategorization_->EvalInstance(0);
+  }
+  else {
+    for (auto& cat : compiledCategories_) {
+      cat->GetNdata();
+      cat->EvalInstance(0);
+    }
+  }
 
-  if (instanceMask_ != nullptr)
-    instanceMask_->assign(nD, false);
+  categoryIndex_.assign(nD, -1);
 
   if (printLevel_ > 2)
     std::cout << "        " << getName() << " has " << nD << " iterations" << std::endl;
@@ -139,13 +201,23 @@ multidraw::Cut::evaluate()
     if (compiledCut_->EvalInstance(iD) == 0.)
       continue;
 
+    if (compiledCategorization_)
+      categoryIndex_[iD] = int(compiledCategorization_->EvalInstance(iD));
+    else if (!compiledCategories_.empty()) {
+      for (unsigned icat(0); icat != compiledCategories_.size(); ++icat) {
+        if (compiledCategories_[icat]->EvalInstance(iD) != 0.) {
+          categoryIndex_[iD] = icat;
+          break;
+        }
+      }
+    }
+    else
+      categoryIndex_[iD] = 0;
+
     any = true;
 
     if (printLevel_ > 2)
       std::cout << "        " << getName() << " iteration " << iD << " pass" << std::endl;
-
-    if (instanceMask_ != nullptr)
-      (*instanceMask_)[iD] = true;
   }
   
   return any;
@@ -157,5 +229,5 @@ multidraw::Cut::fillExprs(std::vector<double> const& _eventWeights)
   ++counter_;
 
   for (auto* filler : fillers_)
-    filler->fill(_eventWeights, instanceMask_);
+    filler->fill(_eventWeights, categoryIndex_);
 }

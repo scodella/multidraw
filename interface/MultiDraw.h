@@ -69,6 +69,12 @@ namespace multidraw {
     //! Add a new cut.
     void addCut(char const* name, char const* expr);
 
+    //! Add a new category.
+    void addCategory(char const* cutName, char const* expr);
+
+    //! Set a categorization expression that evaluates to an integer.
+    void setCategorization(char const* cutName, char const* expr);
+
     //! Add a new variable, computed as a function of other branches
     void addVariable(char const* name, char const* expr);
 
@@ -116,6 +122,12 @@ namespace multidraw {
 
     //! Add a 2D histogram to fill.
     Plot2DFiller& addPlot2D(TH2* hist, char const* xexpr, char const* yexpr, char const* cutName = "", char const* reweight = "");
+
+    //! Add a 1D histogram to fill by a category group.
+    Plot1DFiller& addPlotList(TObjArray* histlist, char const* expr, char const* cutName, char const* reweight = "", Plot1DFiller::OverflowMode mode = Plot1DFiller::kDefault);
+
+    //! Add a 2D histogram to fill by a category group.
+    Plot2DFiller& addPlotList2D(TObjArray* histlist, char const* xexpr, char const* yexpr, char const* cutName, char const* reweight = "");
 
     //! Add a tree to fill.
     TreeFiller& addTree(TTree* tree, char const* cutName = "", char const* reweight = "");

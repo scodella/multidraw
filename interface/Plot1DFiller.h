@@ -4,6 +4,7 @@
 #include "ExprFiller.h"
 
 #include "TH1.h"
+#include "TObjArray.h"
 
 namespace multidraw {
 
@@ -27,21 +28,25 @@ namespace multidraw {
     };
 
     Plot1DFiller(TH1& hist, char const* expr, char const* reweight = "", OverflowMode mode = kDefault);
+    Plot1DFiller(TObjArray& histlist, char const* expr, char const* reweight = "", OverflowMode mode = kDefault);
     Plot1DFiller(Plot1DFiller const&);
     ~Plot1DFiller() {}
 
-    TH1 const& getHist() const { return static_cast<TH1&>(tobj_); }
+    TH1 const& getHist(int icat = -1) const;
+    TH1& getHist(int icat = -1);
 
     unsigned getNdim() const override { return 1; }
 
   private:
     Plot1DFiller(TH1& hist, Plot1DFiller const&);
+    Plot1DFiller(TObjArray& hist, Plot1DFiller const&);
 
-    void doFill_(unsigned) override;
+    void doFill_(unsigned, int icat = -1) override;
     ExprFiller* clone_() override;
     void mergeBack_() override;
 
     OverflowMode overflowMode_{kDefault};
+    bool categorized_{false};
   };
 
 }

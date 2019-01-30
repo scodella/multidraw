@@ -84,7 +84,7 @@ multidraw::ExprFiller::initialize()
 }
 
 void
-multidraw::ExprFiller::fill(std::vector<double> const& _eventWeights, std::vector<bool> const* _presel/* = nullptr*/)
+multidraw::ExprFiller::fill(std::vector<double> const& _eventWeights, std::vector<int> const& _categories)
 {
   // All exprs and reweight exprs share the same manager
   unsigned nD(compiledExprs_.at(0)->GetNdata());
@@ -92,13 +92,13 @@ multidraw::ExprFiller::fill(std::vector<double> const& _eventWeights, std::vecto
   if (printLevel_ > 3)
     std::cout << "          " << getObj().GetName() << "::fill() => " << nD << " iterations" << std::endl;
 
-  if (_presel != nullptr && _presel->size() < nD)
-    nD = _presel->size();
+  if (_categories.size() < nD)
+    nD = _categories.size();
 
   bool loaded(false);
 
   for (unsigned iD(0); iD != nD; ++iD) {
-    if (_presel != nullptr && !(*_presel)[iD])
+    if (_categories[iD] < 0)
       continue;
 
     ++counter_;
@@ -121,7 +121,7 @@ multidraw::ExprFiller::fill(std::vector<double> const& _eventWeights, std::vecto
     if (compiledReweight_ != nullptr)
       entryWeight_ *= compiledReweight_->evaluate(iD);
 
-    doFill_(iD);
+    doFill_(iD, _categories[iD]);
   }
 }
 

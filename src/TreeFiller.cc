@@ -65,7 +65,7 @@ multidraw::TreeFiller::addBranch(char const* _bname, char const* _expr)
 }
 
 void
-multidraw::TreeFiller::doFill_(unsigned _iD)
+multidraw::TreeFiller::doFill_(unsigned _iD, int/* = -1*/)
 {
   if (printLevel_ > 3)
     std::cout << "            Fill(";

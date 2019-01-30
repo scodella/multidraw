@@ -32,7 +32,7 @@ namespace multidraw {
   private:
     TreeFiller(TTree& tree, TreeFiller const&);
 
-    void doFill_(unsigned) override;
+    void doFill_(unsigned, int = -1) override;
     ExprFiller* clone_() override;
     void mergeBack_() override;
 

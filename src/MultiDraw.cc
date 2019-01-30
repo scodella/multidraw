@@ -65,6 +65,20 @@ multidraw::MultiDraw::addCut(char const* _name, char const* _expr)
 }
 
 void
+multidraw::MultiDraw::addCategory(char const* _cutName, char const* _expr)
+{
+  auto& cut(findCut_(_cutName));
+  cut.addCategory(_expr);
+}
+
+void
+multidraw::MultiDraw::setCategorization(char const* _cutName, char const* _expr)
+{
+  auto& cut(findCut_(_cutName));
+  cut.setCategorization(_expr);
+}
+
+void
 multidraw::MultiDraw::addVariable(char const* _name, char const* _expr)
 {
   if (_name == nullptr || std::strlen(_name) == 0)
@@ -117,7 +131,7 @@ multidraw::Plot1DFiller&
 multidraw::MultiDraw::addPlot(TH1* _hist, char const* _expr, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/, Plot1DFiller::OverflowMode _overflowMode/* = kDefault*/)
 {
   if (printLevel_ > 1) {
-    std::cout << "\nAdding Plot " << _hist->GetName() << " with expression " << _expr << std::endl;
+    std::cout << "\nAdding plot " << _hist->GetName() << " with expression " << _expr << std::endl;
     if (_cutName != nullptr && std::strlen(_cutName) != 0)
       std::cout << " Cut: " << _cutName << std::endl;
     if (_reweight != nullptr && std::strlen(_reweight) != 0)
@@ -127,6 +141,30 @@ multidraw::MultiDraw::addPlot(TH1* _hist, char const* _expr, char const* _cutNam
   auto& cut(findCut_(_cutName));
 
   auto* filler(new Plot1DFiller(*_hist, _expr, _reweight, _overflowMode));
+
+  cut.addFiller(*filler);
+
+  return *filler;
+}
+
+multidraw::Plot1DFiller&
+multidraw::MultiDraw::addPlotList(TObjArray* _histlist, char const* _expr, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/, Plot1DFiller::OverflowMode _overflowMode/* = kDefault*/)
+{
+  if (printLevel_ > 1) {
+    std::cout << "\nAdding plot list with expression " << _expr << std::endl;
+    if (_cutName != nullptr && std::strlen(_cutName) != 0)
+      std::cout << " Cut: " << _cutName << std::endl;
+    if (_reweight != nullptr && std::strlen(_reweight) != 0)
+      std::cout << " Reweight: " << _reweight << std::endl;
+  }
+
+  auto& cut(findCut_(_cutName));
+
+  int ncat(cut.getNCategories());
+  if (ncat != -1 && ncat !=_histlist->GetEntries())
+    throw std::runtime_error("Size of histogram list does not match the number of categories");
+
+  auto* filler(new Plot1DFiller(*_histlist, _expr, _reweight, _overflowMode));
 
   cut.addFiller(*filler);
 
@@ -153,11 +191,35 @@ multidraw::MultiDraw::addPlot2D(TH2* _hist, char const* _xexpr, char const* _yex
   return *filler;
 }
 
+multidraw::Plot2DFiller&
+multidraw::MultiDraw::addPlotList2D(TObjArray* _histlist, char const* _xexpr, char const* _yexpr, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/)
+{
+  if (printLevel_ > 1) {
+    std::cout << "\nAdding plot list with expression " << _yexpr << ":" << _xexpr << std::endl;
+    if (_cutName != nullptr && std::strlen(_cutName) != 0)
+      std::cout << " Cut: " << _cutName << std::endl;
+    if (_reweight != nullptr && std::strlen(_reweight) != 0)
+      std::cout << " Reweight: " << _reweight << std::endl;
+  }
+
+  auto& cut(findCut_(_cutName));
+
+  int ncat(cut.getNCategories());
+  if (ncat != -1 && ncat !=_histlist->GetEntries())
+    throw std::runtime_error("Size of histogram list does not match the number of categories");
+
+  auto* filler(new Plot2DFiller(*_histlist, _xexpr, _yexpr, _reweight));
+
+  cut.addFiller(*filler);
+
+  return *filler;
+}
+
 multidraw::TreeFiller&
 multidraw::MultiDraw::addTree(TTree* _tree, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/)
 {
   if (printLevel_ > 1) {
-    std::cout << "\nAdding Tree " << _tree->GetName() << std::endl;
+    std::cout << "\nAdding tree " << _tree->GetName() << std::endl;
     if (_cutName != nullptr && std::strlen(_cutName) != 0)
       std::cout << " Cut: " << _cutName << std::endl;
     if (_reweight != nullptr && std::strlen(_reweight) != 0)
@@ -979,13 +1041,12 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
 
     if (printLevel > 0) {
       for (unsigned iC(0); iC != cuts.size(); ++iC) {
-        auto cut(*cuts[iC]);
         double cutTime(0.);
         if (iC == 0)
           cutTime = millisec(cutTimers[0]) / iEntry;
         else
           cutTime = millisec(cutTimers[iC]) / cuts[0]->getCount();
-        std::cout << "        cut " << cut.getName() << ": " << cutTime << " ms/evt" << std::endl;
+        std::cout << "        cut " << cuts[iC]->getName() << ": " << cutTime << " ms/evt" << std::endl;
       }
     }
   }
