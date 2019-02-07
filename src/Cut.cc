@@ -2,6 +2,7 @@
 #include "../interface/ExprFiller.h"
 
 #include "TTreeFormulaManager.h"
+#include "TTree.h"
 
 #include <iostream>
 
@@ -114,38 +115,28 @@ multidraw::Cut::cutDependsOn(TTree const* _tree) const
   if (!compiledCut_)
     return false;
 
-  unsigned iL(0);
-  while (true) {
-    auto* leaf(compiledCut_->GetLeaf(iL++));
-    if (leaf == nullptr)
-      break;
-
-    if (leaf->GetBranch()->GetTree() == _tree)
-      return true;
-  }
-
-  if (compiledCategorization_) {
-    iL = 0;
-    while (true) {
-      auto* leaf(compiledCategorization_->GetLeaf(iL++));
+  auto doesDepend([_tree](TTreeFormulaCached& _form)->bool {
+    for (int iL(0); iL != _form.GetListOfLeaves()->GetEntriesFast(); ++iL) {
+      auto* leaf(_form.GetLeaf(iL));
       if (leaf == nullptr)
-        break;
+        continue;
 
       if (leaf->GetBranch()->GetTree() == _tree)
         return true;
     }
-  }
+
+    return false;
+    });
+
+  if (doesDepend(*compiledCut_))
+    return true;
+
+  if (compiledCategorization_ && doesDepend(*compiledCategorization_))
+    return true;
 
   for (auto& cat : compiledCategories_) {
-    iL = 0;
-    while (true) {
-      auto* leaf(cat->GetLeaf(iL++));
-      if (leaf == nullptr)
-        break;
-
-      if (leaf->GetBranch()->GetTree() == _tree)
-        return true;
-    }
+    if (doesDepend(*cat))
+      return true;
   }
 
   return false;

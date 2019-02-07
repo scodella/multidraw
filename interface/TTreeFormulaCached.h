@@ -32,6 +32,8 @@ public:
 
   std::shared_ptr<Cache> const& GetCache() const { return fCache; }
 
+  TObjArray const* GetListOfLeaves() const { return &fLeaves; }
+
 private:
   CachePtr fCache;
 
