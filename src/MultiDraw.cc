@@ -581,6 +581,9 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       auto& name(v.first);
       auto& expr(v.second);
 
+      if (_tree.GetBranch(name) != nullptr)
+        throw std::runtime_error(("Branch with name " + name + " already exists in the input tree. Cannot define variable.").Data());
+
       TTreeFormulaCachedPtr formula(library.getFormula(expr));
 
       variables.resize(variables.size() + 1);
