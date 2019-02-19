@@ -166,10 +166,11 @@ multidraw::Cut::initialize()
 bool
 multidraw::Cut::evaluate()
 {
-  if (!compiledCut_)
-    return true;
+  unsigned nD(1);
+  
+  if (compiledCut_)
+    nD = compiledCut_->GetNdata();
 
-  unsigned nD(compiledCut_->GetNdata());
   if (compiledCategorization_) {
     compiledCategorization_->GetNdata();
     compiledCategorization_->EvalInstance(0);
@@ -189,7 +190,7 @@ multidraw::Cut::evaluate()
   bool any(false);
 
   for (unsigned iD(0); iD != nD; ++iD) {
-    if (compiledCut_->EvalInstance(iD) == 0.)
+    if (compiledCut_ && compiledCut_->EvalInstance(iD) == 0.)
       continue;
 
     if (compiledCategorization_)

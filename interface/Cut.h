@@ -53,7 +53,7 @@ namespace multidraw {
     int printLevel_{0};
     unsigned counter_{0};
 
-    std::vector<int> categoryIndex_;
+    std::vector<int> categoryIndex_{};
     TTreeFormulaCachedPtr compiledCut_{nullptr};
     std::vector<TTreeFormulaCachedPtr> compiledCategories_{};
     TTreeFormulaCachedPtr compiledCategorization_{};
