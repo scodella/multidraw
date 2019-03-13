@@ -10,7 +10,10 @@
 multidraw::TreeFiller::TreeFiller(TTree& _tree, char const* _reweight) :
   ExprFiller(_tree, _reweight)
 {
-  _tree.Branch("weight", &entryWeight_, "weight/D");
+  if (_tree.GetBranch("weight") == nullptr)
+    _tree.Branch("weight", &entryWeight_, "weight/D");
+  else
+    _tree.SetBranchAddress("weight", &entryWeight_);
 
   bvalues_.reserve(NBRANCHMAX);
 }
@@ -52,13 +55,22 @@ multidraw::TreeFiller::~TreeFiller()
 }
 
 void
-multidraw::TreeFiller::addBranch(char const* _bname, char const* _expr)
+multidraw::TreeFiller::addBranch(char const* _bname, char const* _expr, bool _rebind/* = false*/)
 {
   if (bvalues_.size() == NBRANCHMAX)
     throw std::runtime_error("Cannot add any more branches");
 
   bvalues_.resize(bvalues_.size() + 1);
-  static_cast<TTree&>(tobj_).Branch(_bname, &bvalues_.back(), TString::Format("%s/D", _bname));
+
+  auto& tree(static_cast<TTree&>(tobj_));
+  if (tree.GetBranch(_bname) != nullptr) {
+    if (_rebind)
+      tree.SetBranchAddress(_bname, &bvalues_.back());
+    else
+      throw std::runtime_error(TString::Format("Tree already has a branch named %s", _bname).Data());
+  }
+  else
+    tree.Branch(_bname, &bvalues_.back(), TString::Format("%s/D", _bname));
 
   bnames_.emplace_back(_bname);
   exprs_.emplace_back(_expr);

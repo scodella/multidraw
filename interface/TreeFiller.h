@@ -21,7 +21,7 @@ namespace multidraw {
     TreeFiller(TreeFiller const&);
     ~TreeFiller();
 
-    void addBranch(char const* bname, char const* expr);
+    void addBranch(char const* bname, char const* expr, bool rebind = false);
 
     TTree const& getTree() const { return static_cast<TTree&>(tobj_); }
 
