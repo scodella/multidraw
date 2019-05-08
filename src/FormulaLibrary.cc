@@ -1,5 +1,6 @@
 #include "../interface/FormulaLibrary.h"
 
+#include <cstring>
 #include <iostream>
 #include <sstream>
 
@@ -11,6 +12,9 @@ multidraw::FormulaLibrary::FormulaLibrary(TTree& _tree) :
 TTreeFormulaCachedPtr
 multidraw::FormulaLibrary::getFormula(char const* _expr, bool _silent/* = false*/)
 {
+  if (_expr == nullptr || std::strlen(_expr) == 0)
+    return TTreeFormulaCachedPtr();
+  
   std::shared_ptr<TTreeFormulaCached::Cache> cache;
 
   auto fItr(caches_.find(_expr));

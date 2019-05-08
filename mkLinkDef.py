@@ -66,7 +66,10 @@ with open(thisdir + '/' + linkdef_path, 'w') as out:
         if fname == 'TTreeFormulaCached.h':
             out.write('#pragma link C++ class TTreeFormulaCached+;\n')
         else:
-            out.write('#pragma link C++ class multidraw::%s;\n' % fname[:-2])
+            with open(thisdir + '/interface/' + fname) as source:
+                for line in source:
+                    if line.startswith('  class '):
+                        out.write('#pragma link C++ class multidraw::%s;\n' % line.strip().split()[1])
 
     out.write('#endif\n')
 

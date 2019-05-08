@@ -4,27 +4,31 @@
 #include "TTreeFormulaManager.h"
 
 #include <iostream>
+#include <cstring>
 
 multidraw::ExprFiller::ExprFiller(TObject& _tobj, char const* _reweight/* = ""*/) :
-  tobj_(_tobj),
-  reweightExpr_(_reweight)
+  tobj_(_tobj)
 {
+  if (_reweight != nullptr && std::strlen(_reweight) != 0)
+    reweightSource_ = std::make_unique<ReweightSource>(_reweight);
 }
 
 multidraw::ExprFiller::ExprFiller(ExprFiller const& _orig) :
   tobj_(_orig.tobj_),
   exprs_(_orig.exprs_),
-  reweightExpr_(_orig.reweightExpr_),
   printLevel_(_orig.printLevel_)
 {
+  if (_orig.reweightSource_)
+    reweightSource_ = std::make_unique<ReweightSource>(*_orig.reweightSource_);
 }
 
 multidraw::ExprFiller::ExprFiller(TObject& _tobj, ExprFiller const& _orig) :
   tobj_(_tobj),
   exprs_(_orig.exprs_),
-  reweightExpr_(_orig.reweightExpr_),
   printLevel_(_orig.printLevel_)
 {
+  if (_orig.reweightSource_)
+    reweightSource_ = std::make_unique<ReweightSource>(*_orig.reweightSource_);
 }
 
 multidraw::ExprFiller::~ExprFiller()
@@ -43,9 +47,10 @@ multidraw::ExprFiller::bindTree(FormulaLibrary& _library)
   for (auto& expr : exprs_)
     compiledExprs_.push_back(_library.getFormula(expr));
 
-  delete compiledReweight_;
-  if (reweightExpr_.Length() != 0)
-    compiledReweight_ = new Reweight(_library.getFormula(reweightExpr_));
+  if (reweightSource_)
+    compiledReweight_ = reweightSource_->compile(_library);
+  else
+    compiledReweight_ = nullptr;
 
   counter_ = 0;
 }
@@ -55,7 +60,6 @@ multidraw::ExprFiller::unlinkTree()
 {
   compiledExprs_.clear();
 
-  delete compiledReweight_;
   compiledReweight_ = nullptr;
 }
 
@@ -118,7 +122,7 @@ multidraw::ExprFiller::fill(std::vector<double> const& _eventWeights, std::vecto
     else
       entryWeight_ = _eventWeights.back();
 
-    if (compiledReweight_ != nullptr)
+    if (compiledReweight_)
       entryWeight_ *= compiledReweight_->evaluate(iD);
 
     doFill_(iD, _categories[iD]);

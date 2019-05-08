@@ -33,7 +33,8 @@ namespace multidraw {
 
     virtual unsigned getNdim() const = 0;
     TTreeFormulaCached* getFormula(unsigned i = 0) const { return compiledExprs_.at(i).get(); }
-    Reweight const* getReweight() const { return compiledReweight_; }
+    void setReweight(ReweightSource const& source) { reweightSource_ = std::make_unique<ReweightSource>(source); }
+    Reweight const* getReweight() const { return compiledReweight_.get(); }
 
     void bindTree(FormulaLibrary&);
     void unlinkTree();
@@ -58,7 +59,7 @@ namespace multidraw {
     TObject& tobj_;
 
     std::vector<TString> exprs_{};
-    TString reweightExpr_{};
+    ReweightSourcePtr reweightSource_{nullptr};
     double entryWeight_{1.};
     unsigned counter_{0};
 
@@ -67,7 +68,7 @@ namespace multidraw {
     int printLevel_{0};
 
     std::vector<TTreeFormulaCachedPtr> compiledExprs_{};
-    Reweight* compiledReweight_{nullptr};
+    ReweightPtr compiledReweight_{nullptr};
   };
 
 }

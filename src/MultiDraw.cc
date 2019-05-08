@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <chrono>
 #include <numeric>
+#include <unordered_map>
 
 multidraw::MultiDraw::MultiDraw(char const* _treeName/* = "events"*/) :
   treeName_(_treeName)
@@ -108,14 +109,21 @@ multidraw::MultiDraw::removeCut(char const* _name)
 void
 multidraw::MultiDraw::setReweight(char const* _expr, TObject const* _source/* = nullptr*/)
 {
-  globalReweightExpr_ = _expr;
-  globalReweightSource_ = _source;
+  globalReweightSource_ = std::make_unique<ReweightSource>(_expr, _source);
+}
+
+void
+multidraw::MultiDraw::setReweight(char const* _xexpr, char const* _yexpr, TObject const* _source/* = nullptr*/)
+{
+  globalReweightSource_ = std::make_unique<ReweightSource>(_xexpr, _yexpr, _source);
 }
 
 void
 multidraw::MultiDraw::setTreeReweight(int _treeNumber, bool _exclusive, char const* _expr, TObject const* _source/* = nullptr*/)
 {
-  treeReweightSources_[_treeNumber] = std::tuple<TString, TObject const*, bool>(_expr, _source, _exclusive);
+  auto& source(treeReweightSources_[_treeNumber]);
+  source.first = std::make_unique<ReweightSource>(_expr, _source);
+  source.second = _exclusive;
 }
 
 void
@@ -558,7 +566,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     TTreeFormulaCachedPtr sourceFormula{};
   };
 
-  TTree* variablesTree(nullptr);
+  std::unique_ptr<TTree> variablesTree(nullptr);
   std::vector<VariableSpec> variables;
 
   //int const maxTreeSize(100);
@@ -567,10 +575,10 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     {
       std::lock_guard<std::mutex> lock(_synchTools.mutex);
       TDirectory::TContext(nullptr);
-      variablesTree = new TTree("_variables", "");
+      variablesTree = std::make_unique<TTree>("_variables", "");
     }
 
-    _tree.AddFriend(variablesTree);
+    _tree.AddFriend(variablesTree.get());
 
     variables.reserve(variables_.size());
 
@@ -658,23 +666,14 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     cutTimers.assign(cuts.size(), SteadyClock::duration::zero());
 
   // Compile the reweight expressions
-  Reweight* globalReweight{nullptr};
-  std::map<unsigned, std::pair<Reweight*, bool>> treeReweights;
+  ReweightPtr globalReweight{nullptr};
+  std::unordered_map<unsigned, std::pair<ReweightPtr, bool>> treeReweights;
 
-  if (globalReweightExpr_.Length() != 0) {
-    if (globalReweightSource_ == nullptr)
-      globalReweight = new Reweight(library.getFormula(globalReweightExpr_));
-    else
-      globalReweight = new Reweight(*globalReweightSource_, library.getFormula(globalReweightExpr_));
-  }
+  if (globalReweightSource_)
+    globalReweight = globalReweightSource_->compile(library);
 
-  for (auto& tr : treeReweightSources_) {
-    auto formula(library.getFormula(std::get<0>(tr.second)));
-    if (std::get<1>(tr.second) == nullptr)
-      treeReweights[tr.first] = std::make_pair(new Reweight(formula), std::get<2>(tr.second));
-    else
-      treeReweights[tr.first] = std::make_pair(new Reweight(*std::get<1>(tr.second), formula), std::get<2>(tr.second));
-  }
+  for (auto& tr : treeReweightSources_)
+    treeReweights.emplace(tr.first, std::make_pair(tr.second.first->compile(library), tr.second.second));
 
   // Preparing for the event loop
   std::vector<double> eventWeights;
@@ -725,7 +724,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
   long nextTreeBoundary(0);
 #endif
 
-  bool filterHasVariables(cuts[0]->cutDependsOn(variablesTree));
+  bool filterHasVariables(cuts[0]->cutDependsOn(variablesTree.get()));
 
   long nEntries(_byTree ? -1 : _nEntries);
 
@@ -860,12 +859,12 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
 
       auto rItr(treeReweights.find(treeNumber + _treeNumberOffset));
       if (rItr == treeReweights.end()) {
-        treeReweight = globalReweight;
+        treeReweight = globalReweight.get();
         exclusiveTreeReweight = true;
       }
       else {
-        treeReweight = rItr->second.first;
-        exclusiveTreeReweight = (globalReweight == nullptr || rItr->second.second);
+        treeReweight = rItr->second.first.get();
+        exclusiveTreeReweight = (!globalReweight || rItr->second.second);
       }
     }
 
@@ -902,7 +901,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
         continue;
     }
 
-    if (variablesTree != nullptr) {
+    if (variablesTree) {
       // Need to set fReadEntry to the current number first for variables dependent on other variables to work
       // Need to set fEntries before fReadEntry (the latter has to be always smaller than the former)
       variablesTree->SetEntries(variablesTree->GetEntries() + 1);
@@ -1076,14 +1075,8 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       delete cut;
   }
 
-  if (variablesTree != nullptr) {
-    _tree.RemoveFriend(variablesTree);
-    delete variablesTree;
-  }
-
-  delete globalReweight;
-  for (auto& tr : treeReweights)
-    delete tr.second.first;
+  if (variablesTree)
+    _tree.RemoveFriend(variablesTree.get());
 
   return iEntry;
 }

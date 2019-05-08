@@ -209,7 +209,7 @@ multidraw::Cut::evaluate()
     any = true;
 
     if (printLevel_ > 2)
-      std::cout << "        " << getName() << " iteration " << iD << " pass" << std::endl;
+      std::cout << "        " << getName() << " iteration " << iD << " pass (cat. index " << categoryIndex_[iD] << ")" << std::endl;
   }
   
   return any;

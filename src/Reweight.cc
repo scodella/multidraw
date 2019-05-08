@@ -1,12 +1,13 @@
 #include "../interface/Reweight.h"
+#include "../interface/FormulaLibrary.h"
 
 #include "TSpline.h"
 #include "TClass.h"
 #include "TTreeFormulaManager.h"
 
-multidraw::Reweight::Reweight(TTreeFormulaCachedPtr const& _formula)
+multidraw::Reweight::Reweight(TTreeFormulaCachedPtr const& _xformula, TTreeFormulaCachedPtr const& _yformula/* = nullptr*/)
 {
-  set(_formula);
+  set(_xformula, _yformula);
 }
   
 multidraw::Reweight::Reweight(TObject const& _source, TTreeFormulaCachedPtr const& _x, TTreeFormulaCachedPtr const& _y/* = nullptr*/, TTreeFormulaCachedPtr const& _z/* = nullptr*/)
@@ -20,9 +21,12 @@ multidraw::Reweight::~Reweight()
 }
 
 void
-multidraw::Reweight::set(TTreeFormulaCachedPtr const& _formula)
+multidraw::Reweight::set(TTreeFormulaCachedPtr const& _xformula, TTreeFormulaCachedPtr const& _yformula/* = nullptr*/)
 {
-  formulas_.assign(1, _formula);
+  formulas_.assign(1, _xformula);
+  if (_yformula)
+    formulas_.push_back(_yformula);
+
   source_ = nullptr;
   setRaw_();
 }
@@ -174,4 +178,23 @@ multidraw::Reweight::evaluateTF1_(unsigned _iD)
   }
   
   return fct.Eval(x[0], x[1], x[2]);
+}
+
+multidraw::ReweightSource::ReweightSource(ReweightSource const& _orig) :
+  xexpr_(_orig.xexpr_),
+  yexpr_(_orig.yexpr_),
+  source_(_orig.source_)
+{
+}
+
+multidraw::ReweightPtr
+multidraw::ReweightSource::compile(FormulaLibrary& _library) const
+{
+  auto xformula(_library.getFormula(xexpr_));
+  auto yformula(_library.getFormula(yexpr_));
+
+  if (source_ == nullptr)
+    return std::make_unique<Reweight>(xformula, yformula);
+  else
+    return std::make_unique<Reweight>(*source_, xformula, yformula);
 }

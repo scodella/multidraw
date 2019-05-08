@@ -5,6 +5,7 @@
 #include "Plot2DFiller.h"
 #include "TreeFiller.h"
 #include "Cut.h"
+#include "Reweight.h"
 
 #include "TChain.h"
 #include "TH1.h"
@@ -100,6 +101,15 @@ namespace multidraw {
      * to look up the y value of the source object, which is used as the weight.
      */
     void setReweight(char const* expr, TObject const* source = nullptr);
+
+    //! Set an overall reweight
+    /*!
+     * Reweight factor can be set in two ways. If the second argument is nullptr,
+     * the value of expr in every event is used as the weight. If instead a TH2
+     * or TF2 is passed as the second argument, the value of xexpr and yexpr is used
+     * to look up the z value of the source object, which is used as the weight.
+     */
+    void setReweight(char const* xexpr, char const* yexpr, TObject const* source = nullptr);
 
     //! Set an overall reweight to specific trees
     /*!
@@ -209,10 +219,9 @@ namespace multidraw {
     std::vector<std::pair<TString, TString>> variables_;
 
     double globalWeight_{1.};
-    TString globalReweightExpr_{};
-    TObject const* globalReweightSource_{nullptr};
+    ReweightSourcePtr globalReweightSource_{};
     std::map<unsigned, std::pair<double, bool>> treeWeights_{};
-    std::map<unsigned, std::tuple<TString, TObject const*, bool>> treeReweightSources_{};
+    std::map<unsigned, std::pair<ReweightSourcePtr, bool>> treeReweightSources_{};
 
     int printLevel_{0};
     bool doTimeProfile_{false};
