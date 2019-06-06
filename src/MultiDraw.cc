@@ -44,6 +44,21 @@ multidraw::MultiDraw::addFriend(char const* _treeName, TObjArray const* _paths)
 }
 
 void
+multidraw::MultiDraw::setGoodRunBranches(char const* bname1, char const* bname2/* = ""*/)
+{
+  goodRunBranch_[0] = bname1;
+  goodRunBranch_[1] = bname2;
+}
+
+void
+multidraw::MultiDraw::addGoodRun(unsigned v1, unsigned v2/* = -1*/)
+{
+  auto& run(goodRuns_[v1]);
+  if (v2 != unsigned(-1))
+    run.insert(v2);
+}
+
+void
 multidraw::MultiDraw::setFilter(char const* _expr)
 {
   findCut_("").setCutExpr(_expr);
@@ -80,12 +95,12 @@ multidraw::MultiDraw::setCategorization(char const* _cutName, char const* _expr)
 }
 
 void
-multidraw::MultiDraw::addVariable(char const* _name, char const* _expr)
+multidraw::MultiDraw::addAlias(char const* _name, char const* _expr)
 {
   if (_name == nullptr || std::strlen(_name) == 0)
-    throw std::invalid_argument("Cannot add a variable with no name");
+    throw std::invalid_argument("Cannot add a alias with no name");
 
-  variables_.emplace_back(_name, _expr);
+  aliases_.emplace_back(_name, _expr);
 }
 
 void
@@ -518,7 +533,8 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
 
 typedef std::chrono::steady_clock SteadyClock;
 
-double millisec(SteadyClock::duration const& interval)
+double
+millisec(SteadyClock::duration const& interval)
 {
   return std::chrono::duration_cast<std::chrono::nanoseconds>(interval).count() * 1.e-6;
 }
@@ -555,10 +571,10 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
   currentTree = &_tree;
 
   // Create the repository of all TTreeFormulas
-  FormulaLibrary library(*currentTree);
+  FormulaLibrary library(_tree);
 
-  // If we have custom-defined variables, must compile them before cuts and fillers refer to them
-  struct VariableSpec {
+  // If we have custom-defined aliases, must compile them before cuts and fillers refer to them
+  struct AliasSpec {
     TBranch* nbranch{nullptr};
     TBranch* vbranch{nullptr};
     unsigned nD{0};
@@ -566,36 +582,36 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     TTreeFormulaCachedPtr sourceFormula{};
   };
 
-  std::unique_ptr<TTree> variablesTree(nullptr);
-  std::vector<VariableSpec> variables;
+  std::unique_ptr<TTree> aliasesTree(nullptr);
+  std::vector<AliasSpec> aliases;
 
   //int const maxTreeSize(100);
 
-  if (!variables_.empty()) {
+  if (!aliases_.empty()) {
     {
       std::lock_guard<std::mutex> lock(_synchTools.mutex);
       TDirectory::TContext(nullptr);
-      variablesTree = std::make_unique<TTree>("_variables", "");
+      aliasesTree = std::make_unique<TTree>("_aliases", "");
     }
 
-    _tree.AddFriend(variablesTree.get());
+    _tree.AddFriend(aliasesTree.get());
 
-    variables.reserve(variables_.size());
+    aliases.reserve(aliases_.size());
 
     std::vector<TString> negativeMultiplicity;
 
-    // Adding variables in given order - variables dependent on others must be declared in order
-    for (auto& v : variables_) {
+    // Adding aliases in given order - aliases dependent on others must be declared in order
+    for (auto& v : aliases_) {
       auto& name(v.first);
       auto& expr(v.second);
 
       if (_tree.GetBranch(name) != nullptr)
-        throw std::runtime_error(("Branch with name " + name + " already exists in the input tree. Cannot define variable.").Data());
+        throw std::runtime_error(("Branch with name " + name + " already exists in the input tree. Cannot define alias.").Data());
 
       TTreeFormulaCachedPtr formula(library.getFormula(expr));
 
-      variables.resize(variables.size() + 1);
-      auto& varspec(variables.back());
+      aliases.resize(aliases.size() + 1);
+      auto& varspec(aliases.back());
 
       varspec.sourceFormula = formula;
 
@@ -605,7 +621,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       if (formulaManager->GetMultiplicity() == 0) {
         // singlet branch
         varspec.values.resize(1);
-        varspec.vbranch = variablesTree->Branch(name, varspec.values.data(), name + "/D");
+        varspec.vbranch = aliasesTree->Branch(name, varspec.values.data(), name + "/D");
       }
       else {
         if (formulaManager->GetMultiplicity() < 0)
@@ -615,8 +631,8 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
         // give some reasonable initial size
         varspec.values.resize(64);
         // array, or expression composed of dynamic array elements
-        varspec.nbranch = variablesTree->Branch("size__" + name, &varspec.nD, "size__" + name + "/i");
-        varspec.vbranch = variablesTree->Branch(name, varspec.values.data(), name + "[size__" + name + "]/D");
+        varspec.nbranch = aliasesTree->Branch("size__" + name, &varspec.nD, "size__" + name + "/i");
+        varspec.vbranch = aliasesTree->Branch(name, varspec.values.data(), name + "[size__" + name + "]/D");
       }
     }
 
@@ -629,8 +645,8 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       }
 
       if (printLevel >= 1) {
-        std::cout << " Variables " << names << " are singlets but are represented as arrays";
-        std::cout << " within MultiDraw. Use index [0] whenever using the variable to ensure";
+        std::cout << " Aliases " << names << " are singlets but are represented as arrays";
+        std::cout << " within MultiDraw. Use index [0] whenever using the alias to ensure";
         std::cout << " we don't try to iterate over the values, especially in an expression";
         std::cout << " used for cuts." << std::endl;
       }
@@ -705,6 +721,34 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
   Reweight* treeReweight{nullptr};
   bool exclusiveTreeReweight(false);
 
+  // Applying good run list
+  std::function<bool()> isGoodRunEvent;
+  TTreeFormula* goodRunBranch[2]{};
+  if (goodRunBranch_[0].Length() != 0) {
+    goodRunBranch[0] = library.getFormula(goodRunBranch_[0]).get();
+    if (goodRunBranch_[1].Length() == 0) {
+      isGoodRunEvent = [this, goodRunBranch]()->bool {
+        goodRunBranch[0]->GetNdata();
+        unsigned v1(goodRunBranch[0]->EvalInstance(0));
+        return this->goodRuns_.count(v1) != 0;
+      };
+    }
+    else { 
+      goodRunBranch[1] = library.getFormula(goodRunBranch_[1]).get();
+      isGoodRunEvent = [this, goodRunBranch]()->bool {
+        goodRunBranch[0]->GetNdata();
+        unsigned v1(goodRunBranch[0]->EvalInstance(0));
+        auto rItr(this->goodRuns_.find(v1));
+        if (rItr == this->goodRuns_.end())
+          return false;
+
+        goodRunBranch[1]->GetNdata();
+        unsigned v2(goodRunBranch[1]->EvalInstance(0));
+        return rItr->second.count(v2) != 0;
+      };
+    }
+  }
+
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
   Long64_t* treeOffsets(nullptr);
 
@@ -724,7 +768,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
   long nextTreeBoundary(0);
 #endif
 
-  bool filterHasVariables(cuts[0]->cutDependsOn(variablesTree.get()));
+  bool filterHasAliases(cuts[0]->cutDependsOn(aliasesTree.get()));
 
   long nEntries(_byTree ? -1 : _nEntries);
 
@@ -848,6 +892,9 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       // Underlying tree changed; formulas must update their pointers
       library.updateFormulaLeaves();
 
+      if (isGoodRunEvent && !isGoodRunEvent())
+        continue;
+
       // Constant overall tree weights
       auto wItr(treeWeights_.find(treeNumber + _treeNumberOffset));
       if (wItr == treeWeights_.end())
@@ -887,8 +934,8 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       start = SteadyClock::now();
     }
 
-    if (!filterHasVariables) {
-      // Optimization in the case when the global filter does not depend on variables
+    if (!filterHasAliases) {
+      // Optimization in the case when the global filter does not depend on aliases
 
       bool passFilter(cuts[0]->evaluate());
 
@@ -901,19 +948,19 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
         continue;
     }
 
-    if (variablesTree) {
-      // Need to set fReadEntry to the current number first for variables dependent on other variables to work
+    if (aliasesTree) {
+      // Need to set fReadEntry to the current number first for aliases dependent on other aliases to work
       // Need to set fEntries before fReadEntry (the latter has to be always smaller than the former)
-      variablesTree->SetEntries(variablesTree->GetEntries() + 1);
-      variablesTree->LoadTree(variablesTree->GetEntries() - 1);
+      aliasesTree->SetEntries(aliasesTree->GetEntries() + 1);
+      aliasesTree->LoadTree(aliasesTree->GetEntries() - 1);
 
-      for (auto& v : variables) {
+      for (auto& v : aliases) {
         if (v.nbranch == nullptr) {
           v.sourceFormula->GetNdata();
           v.values[0] = v.sourceFormula->EvalInstance(0);
 
           if (printLevel > 3)
-            std::cout << "        Variable " << v.vbranch->GetName() << ": static value " << v.values[0] << std::endl;
+            std::cout << "        Alias " << v.vbranch->GetName() << ": static value " << v.values[0] << std::endl;
 
           v.vbranch->Fill();
         }
@@ -931,7 +978,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
             v.values[iD] = v.sourceFormula->EvalInstance(iD);
 
           if (printLevel > 3) {
-            std::cout << "        Variable " << v.vbranch->GetName() << ": dynamic size " << v.nD;
+            std::cout << "        Alias " << v.vbranch->GetName() << ": dynamic size " << v.nD;
             std::cout << " values [";
             for (unsigned iD(0); iD != v.nD; ++iD) {
               std::cout << v.values[iD];
@@ -950,18 +997,18 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       // it essentially does the following to keep the in-memory buffer finite
       // buffer size 10000 to have fewer cycles
       // NEVER MIND THIS SEGFAULTS FOR WHATEVER REASON - 22.11.2018
-      // if (variablesTree->GetEntries() > maxTreeSize) {
+      // if (aliasesTree->GetEntries() > maxTreeSize) {
       //   int newSize(maxTreeSize - maxTreeSize / 10);
-      //   for (auto& v : variables) {
+      //   for (auto& v : aliases) {
       //     v.vbranch->KeepCircular(newSize);
       //     if (v.nbranch != nullptr)
       //       v.nbranch->KeepCircular(newSize);
       //   }
-      //   variablesTree->SetEntries(newSize);
+      //   aliasesTree->SetEntries(newSize);
       // }
     }
 
-    if (filterHasVariables) {
+    if (filterHasAliases) {
       bool passFilter(cuts[0]->evaluate());
 
       if (doTimeProfile) {
@@ -1075,8 +1122,8 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       delete cut;
   }
 
-  if (variablesTree)
-    _tree.RemoveFriend(variablesTree.get());
+  if (aliasesTree)
+    _tree.RemoveFriend(aliasesTree.get());
 
   return iEntry;
 }

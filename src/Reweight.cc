@@ -17,7 +17,7 @@ multidraw::Reweight::Reweight(TObject const& _source, TTreeFormulaCachedPtr cons
 
 multidraw::Reweight::~Reweight()
 {
-  delete spline_;
+  reset();
 }
 
 void
@@ -74,8 +74,8 @@ multidraw::Reweight::getNdata()
 {
   if (formulas_.empty())
     return 1;
-  else
-    return formulas_[0]->GetManager()->GetNdata();
+
+  return formulas_[0]->GetManager()->GetNdata();
 }
 
 void
@@ -180,16 +180,56 @@ multidraw::Reweight::evaluateTF1_(unsigned _iD)
   return fct.Eval(x[0], x[1], x[2]);
 }
 
+
+multidraw::FactorizedReweight::FactorizedReweight(Reweight* _ptr1, Reweight* _ptr2)
+{
+  set(_ptr1, _ptr2);
+}
+
+void
+multidraw::FactorizedReweight::set(Reweight* _ptr1, Reweight* _ptr2)
+{
+  subReweights_[0] = _ptr1;
+  subReweights_[1] = _ptr2;
+}
+
+void
+multidraw::FactorizedReweight::reset()
+{
+  delete subReweights_[0];
+  delete subReweights_[1];
+  subReweights_[0] = nullptr;
+  subReweights_[1] = nullptr;
+
+  Reweight::reset();
+}
+
+TTreeFormulaCached*
+multidraw::FactorizedReweight::getFormula(unsigned i/* = 0*/) const
+{
+  if (i < subReweights_[0]->getNdim())
+    return subReweights_[0]->getFormula(i);
+  else
+    return subReweights_[1]->getFormula(i - subReweights_[0]->getNdim());
+}
+
 multidraw::ReweightSource::ReweightSource(ReweightSource const& _orig) :
   xexpr_(_orig.xexpr_),
   yexpr_(_orig.yexpr_),
   source_(_orig.source_)
 {
+  if (_orig.subReweights_[0] != nullptr) {
+    subReweights_[0] = new ReweightSource(*_orig.subReweights_[0]);
+    subReweights_[1] = new ReweightSource(*_orig.subReweights_[1]);
+  }
 }
 
 multidraw::ReweightPtr
 multidraw::ReweightSource::compile(FormulaLibrary& _library) const
 {
+  if (subReweights_[0] != nullptr)
+    return std::unique_ptr<Reweight>(new FactorizedReweight(subReweights_[0]->compile(_library).release(), subReweights_[1]->compile(_library).release()));
+
   auto xformula(_library.getFormula(xexpr_));
   auto yformula(_library.getFormula(yexpr_));
 

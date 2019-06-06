@@ -61,6 +61,12 @@ namespace multidraw {
     //! Apply an entry list.
     void applyEntryList(TEntryList* elist) { entryList_ = elist; }
 
+    //! Set the name of branches to be used for good run filtering.
+    void setGoodRunBranches(char const* bname1, char const* bname2 = "");
+
+    //! Add good runs.
+    void addGoodRun(unsigned v1, unsigned v2 = -1);
+
     //! Set the name and the C variable type of the weight branch. Pass an empty string to unset.
     void setWeightBranch(char const* bname) { weightBranchName_ = bname; }
 
@@ -76,8 +82,11 @@ namespace multidraw {
     //! Set a categorization expression that evaluates to an integer.
     void setCategorization(char const* cutName, char const* expr);
 
-    //! Add a new variable, computed as a function of other branches
-    void addVariable(char const* name, char const* expr);
+    //! Add a new alias, computed as a function of other branches
+    void addAlias(char const* name, char const* expr);
+
+    //! Backward compatibility
+    void addVariable(char const* name, char const* expr) { addAlias(name, expr); }
 
     //! Remove a cut.
     void removeCut(char const* name);
@@ -207,8 +216,13 @@ namespace multidraw {
     TString treeName_{"events"};
     std::vector<TString> inputPaths_{};
 
-    TEntryList* entryList_{nullptr};
     std::vector<TChain*> friendTrees_{};
+
+    TEntryList* entryList_{nullptr};
+
+    TString goodRunBranch_[2]{};
+    std::map<unsigned, std::set<unsigned>> goodRuns_{};
+
     TString weightBranchName_{"weight"};
     TString evtNumBranchName_{""};
 
@@ -216,7 +230,7 @@ namespace multidraw {
     unsigned prescale_{1};
 
     std::map<TString, Cut*> cuts_;
-    std::vector<std::pair<TString, TString>> variables_;
+    std::vector<std::pair<TString, TString>> aliases_;
 
     double globalWeight_{1.};
     ReweightSourcePtr globalReweightSource_{};
