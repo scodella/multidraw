@@ -1036,6 +1036,9 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
 
     if (treeReweight != nullptr) {
       unsigned nD(treeReweight->getNdata());
+      if (!exclusiveTreeReweight)
+        nD = std::max(nD, globalReweight->getNdata());
+      
       if (nD == 0)
         continue; // skip event
 
