@@ -26,8 +26,12 @@ TTreeFormulaCached::GetNdata()
 Double_t
 TTreeFormulaCached::EvalInstance(Int_t _i, char const* _stringStack[]/* = nullptr*/)
 {
-  if (_i >= int(fCache->fValues.size()))
-    return EvalInstance(fCache->fValues.size() - 1, _stringStack);
+  if (_i >= int(fCache->fValues.size())) {
+    if (fCache->fValues.size() == 0)
+      return 0.;
+    else
+      return EvalInstance(fCache->fValues.size() - 1, _stringStack);
+  }
 
   if (!fCache->fValues[_i].first) {
     fCache->fValues[_i].first = true;
