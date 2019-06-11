@@ -120,6 +120,12 @@ namespace multidraw {
      */
     void setReweight(char const* xexpr, char const* yexpr, TObject const* source = nullptr);
 
+    //! Set an overall reweight
+    /*!
+     * Set directly with a ReweightSource object.
+     */
+    void setReweight(ReweightSource const&);
+
     //! Set an overall reweight to specific trees
     /*!
      * When exclusive = true, the global reweight is not applied to the events

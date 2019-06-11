@@ -134,6 +134,12 @@ multidraw::MultiDraw::setReweight(char const* _xexpr, char const* _yexpr, TObjec
 }
 
 void
+multidraw::MultiDraw::setReweight(ReweightSource const& _source)
+{
+  globalReweightSource_ = std::make_unique<ReweightSource>(_source);
+}
+
+void
 multidraw::MultiDraw::setTreeReweight(int _treeNumber, bool _exclusive, char const* _expr, TObject const* _source/* = nullptr*/)
 {
   auto& source(treeReweightSources_[_treeNumber]);
