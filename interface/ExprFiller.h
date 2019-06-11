@@ -34,6 +34,7 @@ namespace multidraw {
     virtual unsigned getNdim() const = 0;
     TTreeFormulaCached* getFormula(unsigned i = 0) const { return compiledExprs_.at(i).get(); }
     void setReweight(ReweightSource const& source) { reweightSource_ = std::make_unique<ReweightSource>(source); }
+    ReweightSource const* getReweightSource() const { return reweightSource_.get(); }
     Reweight const* getReweight() const { return compiledReweight_.get(); }
 
     void bindTree(FormulaLibrary&);
