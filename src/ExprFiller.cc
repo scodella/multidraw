@@ -15,7 +15,7 @@ multidraw::ExprFiller::ExprFiller(TObject& _tobj, char const* _reweight/* = ""*/
 
 multidraw::ExprFiller::ExprFiller(ExprFiller const& _orig) :
   tobj_(_orig.tobj_),
-  exprs_(_orig.exprs_),
+  sources_(_orig.sources_),
   printLevel_(_orig.printLevel_)
 {
   if (_orig.reweightSource_)
@@ -24,7 +24,7 @@ multidraw::ExprFiller::ExprFiller(ExprFiller const& _orig) :
 
 multidraw::ExprFiller::ExprFiller(TObject& _tobj, ExprFiller const& _orig) :
   tobj_(_tobj),
-  exprs_(_orig.exprs_),
+  sources_(_orig.sources_),
   printLevel_(_orig.printLevel_)
 {
   if (_orig.reweightSource_)
@@ -40,17 +40,19 @@ multidraw::ExprFiller::~ExprFiller()
 }
 
 void
-multidraw::ExprFiller::bindTree(FormulaLibrary& _library)
+multidraw::ExprFiller::bindTree(FormulaLibrary& _formulaLibrary, FunctionLibrary& _functionLibrary)
 {
-  compiledExprs_.clear();
+  unlinkTree();
 
-  for (auto& expr : exprs_)
-    compiledExprs_.push_back(_library.getFormula(expr));
+  for (auto& source : sources_) {
+    if (std::strlen(source.getFormula()) != 0)
+      compiledExprs_.emplace_back(new CompiledExpr(_formulaLibrary.getFormula(source.getFormula())));
+    else
+      compiledExprs_.emplace_back(new CompiledExpr(_functionLibrary.getFunction(*source.getFunction())));
+  }
 
   if (reweightSource_)
-    compiledReweight_ = reweightSource_->compile(_library);
-  else
-    compiledReweight_ = nullptr;
+    compiledReweight_ = reweightSource_->compile(_formulaLibrary);
 
   counter_ = 0;
 }
@@ -59,39 +61,43 @@ void
 multidraw::ExprFiller::unlinkTree()
 {
   compiledExprs_.clear();
-
   compiledReweight_ = nullptr;
 }
 
-multidraw::ExprFiller*
-multidraw::ExprFiller::threadClone(FormulaLibrary& _library)
+multidraw::ExprFillerPtr
+multidraw::ExprFiller::threadClone(FormulaLibrary& _formulaLibrary, FunctionLibrary& _functionLibrary)
 {
-  auto* clone(clone_());
+  ExprFillerPtr clone(clone_());
   clone->cloneSource_ = this;
   clone->setPrintLevel(-1);
-  clone->bindTree(_library);
+  clone->bindTree(_formulaLibrary, _functionLibrary);
   return clone;
 }
 
 void
 multidraw::ExprFiller::initialize()
 {
-  if (compiledExprs_.empty()) // cannot be
-    return;
-
   // Manage all dimensions with a single manager
-  auto* manager(compiledExprs_.at(0)->GetManager());
-  for (unsigned iE(1); iE != compiledExprs_.size(); ++iE)
-    manager->Add(compiledExprs_[iE].get());
+  TTreeFormulaManager* manager(nullptr);
+  for (auto& expr : compiledExprs_) {
+    if (expr->getFormula() == nullptr)
+      continue;
 
-  manager->Sync();
+    if (manager == nullptr)
+      manager = expr->getFormula()->GetManager();
+    else
+      manager->Add(expr->getFormula());
+  }
+
+  if (manager != nullptr)
+    manager->Sync();
 }
 
 void
 multidraw::ExprFiller::fill(std::vector<double> const& _eventWeights, std::vector<int> const& _categories)
 {
   // All exprs and reweight exprs share the same manager
-  unsigned nD(compiledExprs_.at(0)->GetNdata());
+  unsigned nD(compiledExprs_.at(0)->getNdata());
 
   if (printLevel_ > 3)
     std::cout << "          " << getObj().GetName() << "::fill() => " << nD << " iterations" << std::endl;
@@ -109,9 +115,9 @@ multidraw::ExprFiller::fill(std::vector<double> const& _eventWeights, std::vecto
 
     if (!loaded) {
       for (auto& expr : compiledExprs_) {
-        expr->GetNdata();
+        expr->getNdata();
         if (iD != 0) // need to always call EvalInstance(0)
-          expr->EvalInstance(0);
+          expr->evaluate(0);
       }
     }
 
@@ -122,7 +128,7 @@ multidraw::ExprFiller::fill(std::vector<double> const& _eventWeights, std::vecto
     else
       entryWeight_ = _eventWeights.back();
 
-    if (compiledReweight_)
+    if (compiledReweight_ != nullptr)
       entryWeight_ *= compiledReweight_->evaluate(iD);
 
     doFill_(iD, _categories[iD]);

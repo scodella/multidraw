@@ -19,28 +19,26 @@
 #include <algorithm>
 #include <chrono>
 #include <numeric>
+#include <memory>
 #include <unordered_map>
 
 multidraw::MultiDraw::MultiDraw(char const* _treeName/* = "events"*/) :
-  treeName_(_treeName)
+  treeName_(_treeName),
+  filter_(new Cut(""))
 {
-  cuts_.emplace("", new Cut(""));
 }
 
 multidraw::MultiDraw::~MultiDraw()
 {
-  for (auto& namecut : cuts_)
-    delete namecut.second;
 }
 
 void
 multidraw::MultiDraw::addFriend(char const* _treeName, TObjArray const* _paths)
 {
-  auto* chain(new TChain(_treeName));
+  friendTrees_.emplace_back(new TChain(_treeName));
+  auto& chain(friendTrees_.back());
   for (auto* path : *_paths)
     chain->Add(path->GetName());
-
-  friendTrees_.push_back(chain);
 }
 
 void
@@ -61,7 +59,7 @@ multidraw::MultiDraw::addGoodRun(unsigned v1, unsigned v2/* = -1*/)
 void
 multidraw::MultiDraw::setFilter(char const* _expr)
 {
-  findCut_("").setCutExpr(_expr);
+  filter_->setCutExpr(_expr);
 }
 
 void
@@ -106,9 +104,6 @@ multidraw::MultiDraw::addAlias(char const* _name, char const* _expr)
 void
 multidraw::MultiDraw::removeCut(char const* _name)
 {
-  if (_name == nullptr || std::strlen(_name) == 0)
-    throw std::invalid_argument("Cannot delete default cut");
-
   auto cutItr(cuts_.find(_name));
   if (cutItr == cuts_.end()) {
     std::stringstream ss;
@@ -118,7 +113,6 @@ multidraw::MultiDraw::removeCut(char const* _name)
   }
 
   cuts_.erase(cutItr);
-  delete cutItr->second;
 }
 
 void
@@ -171,7 +165,7 @@ multidraw::MultiDraw::addPlot(TH1* _hist, char const* _expr, char const* _cutNam
 
   auto* filler(new Plot1DFiller(*_hist, _expr, _reweight, _overflowMode));
 
-  cut.addFiller(*filler);
+  cut.addFiller(std::unique_ptr<ExprFiller>(filler));
 
   return *filler;
 }
@@ -195,7 +189,7 @@ multidraw::MultiDraw::addPlotList(TObjArray* _histlist, char const* _expr, char 
 
   auto* filler(new Plot1DFiller(*_histlist, _expr, _reweight, _overflowMode));
 
-  cut.addFiller(*filler);
+  cut.addFiller(std::unique_ptr<ExprFiller>(filler));
 
   return *filler;
 }
@@ -215,7 +209,7 @@ multidraw::MultiDraw::addPlot2D(TH2* _hist, char const* _xexpr, char const* _yex
 
   auto* filler(new Plot2DFiller(*_hist, _xexpr, _yexpr, _reweight));
 
-  cut.addFiller(*filler);
+  cut.addFiller(std::unique_ptr<ExprFiller>(filler));
 
   return *filler;
 }
@@ -239,7 +233,7 @@ multidraw::MultiDraw::addPlotList2D(TObjArray* _histlist, char const* _xexpr, ch
 
   auto* filler(new Plot2DFiller(*_histlist, _xexpr, _yexpr, _reweight));
 
-  cut.addFiller(*filler);
+  cut.addFiller(std::unique_ptr<ExprFiller>(filler));
 
   return *filler;
 }
@@ -259,14 +253,17 @@ multidraw::MultiDraw::addTree(TTree* _tree, char const* _cutName/* = ""*/, char 
 
   auto* filler(new TreeFiller(*_tree, _reweight));
 
-  cut.addFiller(*filler);
+  cut.addFiller(std::unique_ptr<ExprFiller>(filler));
 
   return *filler;
 }
 
 multidraw::Cut&
-multidraw::MultiDraw::findCut_(TString const& _cutName) const
+multidraw::MultiDraw::findCut_(char const* _cutName) const
 {
+  if (_cutName == nullptr || std::strlen(_cutName) == 0)
+    return *filter_;
+
   auto cutItr(cuts_.find(_cutName));
 
   if (cutItr == cuts_.end()) {
@@ -282,7 +279,7 @@ multidraw::MultiDraw::findCut_(TString const& _cutName) const
 unsigned
 multidraw::MultiDraw::numObjs() const
 {
-  unsigned n(0);
+  unsigned n(filter_->getNFillers());
   for (auto& namecut : cuts_)
     n += namecut.second->getNFillers();
   return n;
@@ -311,8 +308,8 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
   if (inputMultiplexing_ <= 1) {
     // Single-thread execution
 
-    for (auto* frnd : friendTrees_)
-      mainTree.AddFriend(frnd);
+    for (auto& frnd : friendTrees_)
+      mainTree.AddFriend(frnd.get());
 
     totalEvents_ = executeOne_(_nEntries, _firstEntry, mainTree, synchTools);
   }
@@ -335,8 +332,8 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
     for (auto* elem : fileElements)
       fileNames.emplace_back(elem->GetTitle());
 
-    std::vector<TChain*> trees;
-    std::vector<std::thread*> threads;
+    std::vector<std::unique_ptr<TChain>> trees;
+    std::vector<std::unique_ptr<std::thread>> threads;
 
     // threads will clone the histograms; need to disable adding to gDirectory
     bool currentTH1AddDirectory(TH1::AddDirectoryStatus());
@@ -396,8 +393,8 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
         if (threadElist != nullptr)
           tree->SetEntryList(threadElist);
 
-        threads.push_back(new std::thread(threadTask, -1, 0, tree, treeNumberOffset));
-        trees.push_back(tree);
+        threads.emplace_back(new std::thread(threadTask, -1, 0, tree, treeNumberOffset));
+        trees.emplace_back(tree);
       }
 
       nEntriesMain = nFilesMainThread;
@@ -469,8 +466,8 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
         if (threadElist != nullptr)
           tree->SetEntryList(threadElist);
 
-        threads.push_back(new std::thread(threadTask, nPerThread, threadFirstEntry, tree, treeNumberOffset));
-        trees.push_back(tree);
+        threads.push_back(std::make_unique<std::thread>(threadTask, nPerThread, threadFirstEntry, tree, treeNumberOffset));
+        trees.emplace_back(tree);
 
         firstEntry += nPerThread;
       }
@@ -496,17 +493,17 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
       synchTools.condition.notify_all();
     }
 
-    for (auto* thread : threads)
+    // Let all threads join first before destroying the trees
+    for (auto& thread : threads)
       thread->join();
 
+    threads.clear();
+
     // Tree deletion should not be concurrent with THx deletion, which happens during the last part of executeOne_ (in Cut dtors)
-    // Let all threads join first before destroying the trees
     for (unsigned iT(0); iT != inputMultiplexing_ - 1; ++iT) {
-      delete threads[iT];
       auto* threadElist(trees[iT]->GetEntryList());
       trees[iT]->SetEntryList(nullptr);
       delete threadElist;
-      delete trees[iT];
     }
 
     TH1::AddDirectory(currentTH1AddDirectory);
@@ -520,18 +517,24 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
   if (printLevel_ >= 0) {
     std::cout << "\r      " << totalEvents_ << " events" << std::endl;
     if (printLevel_ > 0) {
+      auto printCut([this](Cut const& cut) {
+          std::cout << "        Cut " << cut.getName() << ": passed total " << cut.getCount() << std::endl;
+          if (this->printLevel_ > 1) {
+            for (unsigned iF(0); iF != cut.getNFillers(); ++iF) {
+              auto* filler(cut.getFiller(iF));
+              std::cout << "          " << filler->getObj().GetName() << ": " << filler->getCount() << std::endl;
+            }
+          }
+        });
+
+      printCut(*filter_);
+
       for (auto& namecut : cuts_) {
         auto& cut(*namecut.second);
         if (namecut.first.Length() != 0 && cut.getNFillers() == 0) // skip non-default cut with no filler
           continue;
 
-        std::cout << "        Cut " << cut.getName() << ": passed total " << cut.getCount() << std::endl;
-        if (printLevel_ > 1) {
-          for (unsigned iF(0); iF != cut.getNFillers(); ++iF) {
-            auto* filler(cut.getFiller(iF));
-            std::cout << "          " << filler->getObj().GetName() << ": " << filler->getCount() << std::endl;
-          }
-        }
+        printCut(cut);
       }
     }
   }
@@ -578,6 +581,8 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
 
   // Create the repository of all TTreeFormulas
   FormulaLibrary library(_tree);
+  // and of all TTreeFunctions
+  FunctionLibrary flibrary(_tree);
 
   // If we have custom-defined aliases, must compile them before cuts and fillers refer to them
   struct AliasSpec {
@@ -585,7 +590,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     TBranch* vbranch{nullptr};
     unsigned nD{0};
     std::vector<double> values{};
-    TTreeFormulaCachedPtr sourceFormula{};
+    TTreeFormulaCached* sourceFormula{};
   };
 
   std::unique_ptr<TTree> aliasesTree(nullptr);
@@ -614,14 +619,14 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       if (_tree.GetBranch(name) != nullptr)
         throw std::runtime_error(("Branch with name " + name + " already exists in the input tree. Cannot define alias.").Data());
 
-      TTreeFormulaCachedPtr formula(library.getFormula(expr));
+      TTreeFormulaCached& formula(library.getFormula(expr));
 
       aliases.resize(aliases.size() + 1);
       auto& varspec(aliases.back());
 
-      varspec.sourceFormula = formula;
+      varspec.sourceFormula = &formula;
 
-      auto* formulaManager(formula->GetManager());
+      auto* formulaManager(formula.GetManager());
       formulaManager->Sync();
 
       if (formulaManager->GetMultiplicity() == 0) {
@@ -660,32 +665,42 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
   }
 
   // Set up the cuts and filler objects
-  std::vector<Cut*> cuts;
-  cuts.push_back(nullptr); // placeholder for the default cut (which we want at index 0)
+  CutPtr filter;
+  std::vector<CutPtr> cuts;
 
-  for (auto& namecut : cuts_) {
-    auto* cut(namecut.second);
-    if (namecut.first.Length() != 0 && cut->getNFillers() == 0)
-      continue;
+  if (isMainThread) {
+    filter = std::move(filter_);
+    filter->setPrintLevel(printLevel);
+    filter->bindTree(library, flibrary);
 
-    if (isMainThread) {
-      cut->setPrintLevel(printLevel);
-      cut->bindTree(library);
+    filter->initialize();
+
+    for (auto& namecut : cuts_) {
+      if (namecut.first.Length() != 0 && namecut.second->getNFillers() == 0)
+        continue;
+
+      cuts.emplace_back(std::move(namecut.second));
+      cuts.back()->setPrintLevel(printLevel);
+      cuts.back()->bindTree(library, flibrary);
+
+      cuts.back()->initialize();
     }
-    else {
-      cut = cut->threadClone(library);
+  }
+  else {
+    filter = filter_->threadClone(library, flibrary);
+
+    for (auto& namecut : cuts_) {
+      if (namecut.first.Length() != 0 && namecut.second->getNFillers() == 0)
+        continue;
+
+      cuts.emplace_back(namecut.second->threadClone(library, flibrary));
+
+      cuts.back()->initialize();
     }
-
-    if (namecut.first.Length() == 0)
-      cuts[0] = cut;
-    else
-      cuts.push_back(cut);
-
-    cut->initialize();
   }
 
   if (isMainThread && doTimeProfile)
-    cutTimers.assign(cuts.size(), SteadyClock::duration::zero());
+    cutTimers.assign(1 + cuts.size(), SteadyClock::duration::zero());
 
   // Compile the reweight expressions
   ReweightPtr globalReweight{nullptr};
@@ -731,7 +746,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
   std::function<bool()> isGoodRunEvent;
   TTreeFormula* goodRunBranch[2]{};
   if (goodRunBranch_[0].Length() != 0) {
-    goodRunBranch[0] = library.getFormula(goodRunBranch_[0]).get();
+    goodRunBranch[0] = &library.getFormula(goodRunBranch_[0]);
     if (goodRunBranch_[1].Length() == 0) {
       isGoodRunEvent = [this, goodRunBranch]()->bool {
         goodRunBranch[0]->GetNdata();
@@ -740,7 +755,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       };
     }
     else { 
-      goodRunBranch[1] = library.getFormula(goodRunBranch_[1]).get();
+      goodRunBranch[1] = &library.getFormula(goodRunBranch_[1]);
       isGoodRunEvent = [this, goodRunBranch]()->bool {
         goodRunBranch[0]->GetNdata();
         unsigned v1(goodRunBranch[0]->EvalInstance(0));
@@ -774,7 +789,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
   long nextTreeBoundary(0);
 #endif
 
-  bool filterHasAliases(cuts[0]->cutDependsOn(aliasesTree.get()));
+  bool filterHasAliases(filter->dependsOn(*aliasesTree.get()));
 
   long nEntries(_byTree ? -1 : _nEntries);
 
@@ -943,10 +958,10 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     if (!filterHasAliases) {
       // Optimization in the case when the global filter does not depend on aliases
 
-      bool passFilter(cuts[0]->evaluate());
+      bool passFilter(filter->evaluate());
 
       if (doTimeProfile) {
-        cutTimers[0] += SteadyClock::now() - start;
+        cutTimers.back() += SteadyClock::now() - start;
         start = SteadyClock::now();
       }
 
@@ -1015,10 +1030,10 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     }
 
     if (filterHasAliases) {
-      bool passFilter(cuts[0]->evaluate());
+      bool passFilter(filter->evaluate());
 
       if (doTimeProfile) {
-        cutTimers[0] += SteadyClock::now() - start;
+        cutTimers.back() += SteadyClock::now() - start;
         start = SteadyClock::now();
       }
 
@@ -1072,14 +1087,14 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       start = SteadyClock::now();
     }
 
-    cuts[0]->fillExprs(eventWeights);
+    filter->fillExprs(eventWeights);
 
     if (doTimeProfile) {
-      cutTimers[0] += SteadyClock::now() - start;
+      cutTimers.back() += SteadyClock::now() - start;
       start = SteadyClock::now();
     }
 
-    for (unsigned iC(1); iC != cuts.size(); ++iC) {
+    for (unsigned iC(0); iC != cuts.size(); ++iC) {
       if (cuts[iC]->evaluate())
         cuts[iC]->fillExprs(eventWeights);
 
@@ -1102,22 +1117,25 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     std::cout << "        Time spent on event reweighting: " << (millisec(eventTimer) / iEntry) << " ms/evt" << std::endl;
 
     if (printLevel > 0) {
+      std::cout << "        cut " << filter->getName() << ": ";
+      std::cout << (millisec(cutTimers.back()) / iEntry) << " ms/evt" << std::endl;
       for (unsigned iC(0); iC != cuts.size(); ++iC) {
-        double cutTime(0.);
-        if (iC == 0)
-          cutTime = millisec(cutTimers[0]) / iEntry;
-        else
-          cutTime = millisec(cutTimers[iC]) / cuts[0]->getCount();
-        std::cout << "        cut " << cuts[iC]->getName() << ": " << cutTime << " ms/evt" << std::endl;
+        std::cout << "        cut " << cuts[iC]->getName() << ": ";
+        std::cout << (millisec(cutTimers[iC]) / cuts[0]->getCount()) << " ms/evt" << std::endl;
       }
     }
   }
 
-  if (std::this_thread::get_id() == _synchTools.mainThread) {
-    // unlink
+  if (isMainThread) {
+    // unlink and return pointers
 
-    for (auto* cut : cuts)
+    filter->unlinkTree();
+    filter_ = std::move(filter);
+
+    for (auto& cut : cuts) {
       cut->unlinkTree();
+      cuts_[cut->getName()] = std::move(cut);
+    }
   }
   else {
     // merge & cleanup
@@ -1126,9 +1144,9 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     std::unique_lock<std::mutex> lock(_synchTools.mutex);
     _synchTools.condition.wait(lock, [&_synchTools]() { return _synchTools.mainDone; });
 
-    // Clone fillers will merge themselves to the main object in the destructor
-    for (auto* cut : cuts)
-      delete cut;
+    // Clone fillers will merge themselves to the main object in the destructor of the cuts
+    filter.reset();
+    cuts.clear();
   }
 
   if (aliasesTree)

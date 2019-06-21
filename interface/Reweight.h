@@ -6,6 +6,7 @@
 #include "TH1.h"
 #include "TGraph.h"
 #include "TF1.h"
+#include "TSpline.h"
 
 #include <functional>
 
@@ -16,19 +17,19 @@ namespace multidraw {
   class Reweight {
   public:
     Reweight() {}
-    Reweight(TTreeFormulaCachedPtr const&, TTreeFormulaCachedPtr const& = nullptr);
-    Reweight(TObject const&, TTreeFormulaCachedPtr const&, TTreeFormulaCachedPtr const& = nullptr, TTreeFormulaCachedPtr const& = nullptr);
-    virtual ~Reweight();
+    Reweight(TTreeFormulaCached*, TTreeFormulaCached* = nullptr);
+    Reweight(TObject const&, TTreeFormulaCached*, TTreeFormulaCached* = nullptr, TTreeFormulaCached* = nullptr);
+    virtual ~Reweight() {}
 
     //! Set the tree formula to reweight with.
-    void set(TTreeFormulaCachedPtr const& xformula, TTreeFormulaCachedPtr const& yformula = nullptr);
+    void set(TTreeFormulaCached* xformula, TTreeFormulaCached* yformula = nullptr);
     //! Reweight through a histogram, a graph, or a function. Formulas return the x, y, z values to be fed to the object.
-    void set(TObject const&, TTreeFormulaCachedPtr const&, TTreeFormulaCachedPtr const& = nullptr, TTreeFormulaCachedPtr const& = nullptr);
+    void set(TObject const&, TTreeFormulaCached*, TTreeFormulaCached* = nullptr, TTreeFormulaCached* = nullptr);
 
     virtual void reset();
 
     virtual unsigned getNdim() const { return formulas_.size(); }
-    virtual TTreeFormulaCached* getFormula(unsigned i = 0) const { return formulas_.at(i).get(); }
+    virtual TTreeFormulaCached* getFormula(unsigned i = 0) const { return formulas_.at(i); }
     virtual TObject const* getSource(unsigned i = 0) const { return source_; }
 
     virtual unsigned getNdata();
@@ -46,9 +47,9 @@ namespace multidraw {
     double evaluateTF1_(unsigned);
 
     //! One entry per source dimension
-    std::vector<TTreeFormulaCachedPtr> formulas_{};
+    std::vector<TTreeFormulaCached*> formulas_{};
     TObject const* source_{nullptr};
-    TSpline3* spline_{nullptr};
+    std::unique_ptr<TSpline3> spline_{};
 
     std::function<double(unsigned)> evaluate_{};
   };
@@ -57,9 +58,10 @@ namespace multidraw {
 
   class FactorizedReweight : public Reweight {
   public:
-    FactorizedReweight(Reweight*, Reweight*); // combined (factorized) reweighting
+    FactorizedReweight(ReweightPtr&&, ReweightPtr&&); // combined (factorized) reweighting
+    ~FactorizedReweight() {}
     //! Reweight through a combination of reweights
-    void set(Reweight*, Reweight*);
+    void set(ReweightPtr&&, ReweightPtr&&);
 
     void reset() override;
 
@@ -71,7 +73,7 @@ namespace multidraw {
     double evaluate(unsigned i = 0) const override { return subReweights_[0]->evaluate(i) * subReweights_[1]->evaluate(i); }
 
   private:
-    Reweight* subReweights_[2]{};
+    std::array<ReweightPtr, 2> subReweights_{};
   };
 
   class FormulaLibrary;
@@ -83,10 +85,9 @@ namespace multidraw {
     ReweightSource(char const* expr, TObject const* source = nullptr) : xexpr_(expr), yexpr_(""), source_(source) {}
     ReweightSource(char const* xexpr, char const* yexpr, TObject const* source = nullptr) : xexpr_(xexpr), yexpr_(yexpr), source_(source) {}
     ReweightSource(ReweightSource const& r1, ReweightSource const& r2) {
-      subReweights_[0] = new ReweightSource(r1);
-      subReweights_[1] = new ReweightSource(r2);
+      subReweights_[0] = std::make_unique<ReweightSource>(r1);
+      subReweights_[1] = std::make_unique<ReweightSource>(r2);
     }
-    ~ReweightSource() { delete subReweights_[0]; delete subReweights_[1]; }
 
     ReweightPtr compile(FormulaLibrary&) const;
 
@@ -95,7 +96,7 @@ namespace multidraw {
     TString yexpr_{""};
     TObject const* source_{nullptr};
 
-    ReweightSource* subReweights_[2]{};
+    std::array<std::unique_ptr<ReweightSource>, 2> subReweights_;
   };
 
   typedef std::unique_ptr<ReweightSource> ReweightSourcePtr;

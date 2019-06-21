@@ -8,16 +8,16 @@
 multidraw::Plot2DFiller::Plot2DFiller(TH2& _hist, char const* _xexpr, char const* _yexpr, char const* _reweight/* = ""*/) :
   ExprFiller(_hist, _reweight)
 {
-  exprs_.push_back(_xexpr);
-  exprs_.push_back(_yexpr);
+  sources_.push_back(_xexpr);
+  sources_.push_back(_yexpr);
 }
 
 multidraw::Plot2DFiller::Plot2DFiller(TObjArray& _histlist, char const* _xexpr, char const* _yexpr, char const* _reweight/* = ""*/) :
   ExprFiller(_histlist, _reweight),
   categorized_(true)
 {
-  exprs_.push_back(_xexpr);
-  exprs_.push_back(_yexpr);
+  sources_.push_back(_xexpr);
+  sources_.push_back(_yexpr);
 }
 
 multidraw::Plot2DFiller::Plot2DFiller(Plot2DFiller const& _orig) :
@@ -66,13 +66,11 @@ multidraw::Plot2DFiller::getHist(int _icat/* = -1*/)
 void
 multidraw::Plot2DFiller::doFill_(unsigned _iD, int _icat/* = -1*/)
 {
-  if (printLevel_ > 3) {
-    std::cout << "            Fill(" << compiledExprs_[0]->EvalInstance(_iD) << ", ";
-    std::cout << compiledExprs_[1]->EvalInstance(_iD) << "; " << entryWeight_ << ")" << std::endl;
-  }
+  double x(compiledExprs_[0]->evaluate(_iD));
+  double y(compiledExprs_[1]->evaluate(_iD));
 
-  double x(compiledExprs_[0]->EvalInstance(_iD));
-  double y(compiledExprs_[1]->EvalInstance(_iD));
+  if (printLevel_ > 3)
+    std::cout << "            Fill(" << x << ", " << y << "; " << entryWeight_ << ")" << std::endl;
 
   auto& hist(getHist(_icat));
 
@@ -85,6 +83,7 @@ multidraw::Plot2DFiller::clone_()
   if (categorized_) {
     auto& myArray(static_cast<TObjArray&>(tobj_));
 
+    // this array will be deleted in the clone ctor
     auto* array(new TObjArray());
     array->SetOwner(true);
 

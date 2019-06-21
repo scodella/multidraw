@@ -16,10 +16,8 @@ multidraw::Cut::~Cut()
 {
   unlinkTree();
 
-  for (auto* filler : fillers_) {
+  for (auto& filler : fillers_)
     filler->mergeBack();
-    delete filler;
-  }
 }
 
 TString
@@ -35,7 +33,7 @@ void
 multidraw::Cut::setPrintLevel(int _l)
 {
   printLevel_ = _l;
-  for (auto* filler : fillers_)
+  for (auto& filler : fillers_)
     filler->setPrintLevel(_l);
 }
 
@@ -56,42 +54,42 @@ multidraw::Cut::getNCategories() const
 }
 
 void
-multidraw::Cut::bindTree(FormulaLibrary& _library)
+multidraw::Cut::bindTree(FormulaLibrary& _formulaLibrary, FunctionLibrary& _functionLibrary)
 {
   counter_ = 0;
 
-  compiledCut_.reset();
+  unlinkTree();
+
   if (cutExpr_.Length() != 0)
-    compiledCut_ = _library.getFormula(cutExpr_);
+    compiledCut_ = &_formulaLibrary.getFormula(cutExpr_);
 
   if (categorizationExpr_.Length() != 0)
-    compiledCategorization_ = _library.getFormula(categorizationExpr_);
+    compiledCategorization_ = &_formulaLibrary.getFormula(categorizationExpr_);
   else {
-    compiledCategories_.clear();
     for (auto& expr : categoryExprs_)
-      compiledCategories_.push_back(_library.getFormula(expr));
+      compiledCategories_.push_back(&_formulaLibrary.getFormula(expr));
   }
 
-  for (auto* filler : fillers_)
-    filler->bindTree(_library);
+  for (auto& filler : fillers_)
+    filler->bindTree(_formulaLibrary, _functionLibrary);
 }
 
 void
 multidraw::Cut::unlinkTree()
 {
-  compiledCut_.reset();
+  compiledCut_ = nullptr;
 
-  compiledCategorization_.reset();
+  compiledCategorization_ = nullptr;
   compiledCategories_.clear();
 
-  for (auto* filler : fillers_)
+  for (auto& filler : fillers_)
     filler->unlinkTree();
 }
 
-multidraw::Cut*
-multidraw::Cut::threadClone(FormulaLibrary& _library) const
+multidraw::CutPtr
+multidraw::Cut::threadClone(FormulaLibrary& _formulaLibrary, FunctionLibrary& _functionLibrary) const
 {
-  Cut* clone(new Cut(name_, cutExpr_));
+  auto clone(std::make_unique<Cut>(name_, cutExpr_));
   clone->setPrintLevel(-1);
 
   if (categorizationExpr_.Length() != 0)
@@ -101,27 +99,27 @@ multidraw::Cut::threadClone(FormulaLibrary& _library) const
       clone->addCategory(expr);
   }
 
-  for (auto* filler : fillers_)
-    clone->addFiller(*filler->threadClone(_library));
+  for (auto& filler : fillers_)
+    clone->addFiller(filler->threadClone(_formulaLibrary, _functionLibrary));
 
-  clone->bindTree(_library);
+  clone->bindTree(_formulaLibrary, _functionLibrary);
 
   return clone;
 }
 
 bool
-multidraw::Cut::cutDependsOn(TTree const* _tree) const
+multidraw::Cut::dependsOn(TTree const& _tree) const
 {
-  if (!compiledCut_)
+  if (compiledCut_ == nullptr)
     return false;
 
-  auto doesDepend([_tree](TTreeFormulaCached& _form)->bool {
+  auto doesDepend([&_tree](TTreeFormulaCached& _form)->bool {
     for (int iL(0); iL != _form.GetListOfLeaves()->GetEntriesFast(); ++iL) {
       auto* leaf(_form.GetLeaf(iL));
       if (leaf == nullptr)
         continue;
 
-      if (leaf->GetBranch()->GetTree() == _tree)
+      if (leaf->GetBranch()->GetTree() == &_tree)
         return true;
     }
 
@@ -131,10 +129,10 @@ multidraw::Cut::cutDependsOn(TTree const* _tree) const
   if (doesDepend(*compiledCut_))
     return true;
 
-  if (compiledCategorization_ && doesDepend(*compiledCategorization_))
+  if (compiledCategorization_ != nullptr && doesDepend(*compiledCategorization_))
     return true;
 
-  for (auto& cat : compiledCategories_) {
+  for (auto* cat : compiledCategories_) {
     if (doesDepend(*cat))
       return true;
   }
@@ -145,21 +143,21 @@ multidraw::Cut::cutDependsOn(TTree const* _tree) const
 void
 multidraw::Cut::initialize()
 {
-  if (!compiledCut_)
+  if (compiledCut_ == nullptr)
     return;
 
   // Each formula object has a default manager
   auto* formulaManager(compiledCut_->GetManager());
-  if (compiledCategorization_)
-    formulaManager->Add(compiledCategorization_.get());
+  if (compiledCategorization_ != nullptr)
+    formulaManager->Add(compiledCategorization_);
   else {
-    for (auto& cat : compiledCategories_)
-      formulaManager->Add(cat.get());
+    for (auto* cat : compiledCategories_)
+      formulaManager->Add(cat);
   }
 
   formulaManager->Sync();
 
-  for (auto* filler : fillers_)
+  for (auto& filler : fillers_)
     filler->initialize();
 }
 
@@ -168,15 +166,15 @@ multidraw::Cut::evaluate()
 {
   unsigned nD(1);
   
-  if (compiledCut_)
+  if (compiledCut_ != nullptr)
     nD = compiledCut_->GetNdata();
 
-  if (compiledCategorization_) {
+  if (compiledCategorization_ != nullptr) {
     compiledCategorization_->GetNdata();
     compiledCategorization_->EvalInstance(0);
   }
   else {
-    for (auto& cat : compiledCategories_) {
+    for (auto* cat : compiledCategories_) {
       cat->GetNdata();
       cat->EvalInstance(0);
     }
@@ -190,10 +188,10 @@ multidraw::Cut::evaluate()
   bool any(false);
 
   for (unsigned iD(0); iD != nD; ++iD) {
-    if (compiledCut_ && compiledCut_->EvalInstance(iD) == 0.)
+    if (compiledCut_ != nullptr && compiledCut_->EvalInstance(iD) == 0.)
       continue;
 
-    if (compiledCategorization_)
+    if (compiledCategorization_ != nullptr)
       categoryIndex_[iD] = int(compiledCategorization_->EvalInstance(iD));
     else if (!compiledCategories_.empty()) {
       for (unsigned icat(0); icat != compiledCategories_.size(); ++icat) {
@@ -220,6 +218,6 @@ multidraw::Cut::fillExprs(std::vector<double> const& _eventWeights)
 {
   ++counter_;
 
-  for (auto* filler : fillers_)
+  for (auto& filler : fillers_)
     filler->fill(_eventWeights, categoryIndex_);
 }

@@ -1,27 +1,21 @@
 #include "../interface/Reweight.h"
 #include "../interface/FormulaLibrary.h"
 
-#include "TSpline.h"
 #include "TClass.h"
 #include "TTreeFormulaManager.h"
 
-multidraw::Reweight::Reweight(TTreeFormulaCachedPtr const& _xformula, TTreeFormulaCachedPtr const& _yformula/* = nullptr*/)
+multidraw::Reweight::Reweight(TTreeFormulaCached* _xformula, TTreeFormulaCached* _yformula/* = nullptr*/)
 {
   set(_xformula, _yformula);
 }
   
-multidraw::Reweight::Reweight(TObject const& _source, TTreeFormulaCachedPtr const& _x, TTreeFormulaCachedPtr const& _y/* = nullptr*/, TTreeFormulaCachedPtr const& _z/* = nullptr*/)
+multidraw::Reweight::Reweight(TObject const& _source, TTreeFormulaCached* _x, TTreeFormulaCached* _y/* = nullptr*/, TTreeFormulaCached* _z/* = nullptr*/)
 {
   set(_source, _x, _y, _z);
 }
 
-multidraw::Reweight::~Reweight()
-{
-  reset();
-}
-
 void
-multidraw::Reweight::set(TTreeFormulaCachedPtr const& _xformula, TTreeFormulaCachedPtr const& _yformula/* = nullptr*/)
+multidraw::Reweight::set(TTreeFormulaCached* _xformula, TTreeFormulaCached* _yformula/* = nullptr*/)
 {
   formulas_.assign(1, _xformula);
   if (_yformula)
@@ -32,7 +26,7 @@ multidraw::Reweight::set(TTreeFormulaCachedPtr const& _xformula, TTreeFormulaCac
 }
 
 void
-multidraw::Reweight::set(TObject const& _source, TTreeFormulaCachedPtr const& _x, TTreeFormulaCachedPtr const& _y/* = nullptr*/, TTreeFormulaCachedPtr const& _z/* = nullptr*/)
+multidraw::Reweight::set(TObject const& _source, TTreeFormulaCached* _x, TTreeFormulaCached* _y/* = nullptr*/, TTreeFormulaCached* _z/* = nullptr*/)
 {
   formulas_.assign(1, _x);
   if (_y)
@@ -43,7 +37,7 @@ multidraw::Reweight::set(TObject const& _source, TTreeFormulaCachedPtr const& _x
   if (formulas_.size() != 1) {
     auto* manager(formulas_[0]->GetManager());
     for (unsigned iF(1); iF != formulas_.size(); ++iF)
-      manager->Add(formulas_[iF].get());
+      manager->Add(formulas_[iF]);
 
     manager->Sync();
   }
@@ -64,8 +58,7 @@ multidraw::Reweight::reset()
 {
   formulas_.clear();
   source_ = nullptr;
-  delete spline_;
-  spline_ = nullptr;
+  spline_.reset();
   evaluate_ = nullptr;
 }
 
@@ -99,8 +92,7 @@ multidraw::Reweight::setTH1_()
 void
 multidraw::Reweight::setTGraph_()
 {
-  delete spline_;
-  spline_ = new TSpline3("interpolation", static_cast<TGraph const*>(source_));
+  spline_.reset(new TSpline3("interpolation", static_cast<TGraph const*>(source_)));
   
   evaluate_ = [this](unsigned i)->double { return this->evaluateTGraph_(i); };
 }
@@ -159,7 +151,7 @@ multidraw::Reweight::evaluateTGraph_(unsigned _iD)
   
   double x(formulas_[0]->EvalInstance(_iD));
 
-  return graph.Eval(x, spline_);
+  return graph.Eval(x, spline_.get());
 }
 
 double
@@ -181,25 +173,23 @@ multidraw::Reweight::evaluateTF1_(unsigned _iD)
 }
 
 
-multidraw::FactorizedReweight::FactorizedReweight(Reweight* _ptr1, Reweight* _ptr2)
+multidraw::FactorizedReweight::FactorizedReweight(ReweightPtr&& _ptr1, ReweightPtr&& _ptr2)
 {
-  set(_ptr1, _ptr2);
+  set(std::move(_ptr1), std::move(_ptr2));
 }
 
 void
-multidraw::FactorizedReweight::set(Reweight* _ptr1, Reweight* _ptr2)
+multidraw::FactorizedReweight::set(ReweightPtr&& _ptr1, ReweightPtr&& _ptr2)
 {
-  subReweights_[0] = _ptr1;
-  subReweights_[1] = _ptr2;
+  subReweights_[0] = std::move(_ptr1);
+  subReweights_[1] = std::move(_ptr2);
 }
 
 void
 multidraw::FactorizedReweight::reset()
 {
-  delete subReweights_[0];
-  delete subReweights_[1];
-  subReweights_[0] = nullptr;
-  subReweights_[1] = nullptr;
+  subReweights_[0].reset();
+  subReweights_[1].reset();
 
   Reweight::reset();
 }
@@ -218,20 +208,22 @@ multidraw::ReweightSource::ReweightSource(ReweightSource const& _orig) :
   yexpr_(_orig.yexpr_),
   source_(_orig.source_)
 {
-  if (_orig.subReweights_[0] != nullptr) {
-    subReweights_[0] = new ReweightSource(*_orig.subReweights_[0]);
-    subReweights_[1] = new ReweightSource(*_orig.subReweights_[1]);
+  if (_orig.subReweights_[0]) {
+    subReweights_[0] = std::make_unique<ReweightSource>(*_orig.subReweights_[0]);
+    subReweights_[1] = std::make_unique<ReweightSource>(*_orig.subReweights_[1]);
   }
 }
 
 multidraw::ReweightPtr
 multidraw::ReweightSource::compile(FormulaLibrary& _library) const
 {
-  if (subReweights_[0] != nullptr)
-    return std::unique_ptr<Reweight>(new FactorizedReweight(subReweights_[0]->compile(_library).release(), subReweights_[1]->compile(_library).release()));
+  if (subReweights_[0])
+    return ReweightPtr(new FactorizedReweight(subReweights_[0]->compile(_library), subReweights_[1]->compile(_library)));
 
-  auto xformula(_library.getFormula(xexpr_));
-  auto yformula(_library.getFormula(yexpr_));
+  auto* xformula(&_library.getFormula(xexpr_));
+  TTreeFormulaCached* yformula(nullptr);
+  if (yexpr_.Length() != 0)
+    yformula = &_library.getFormula(yexpr_);
 
   if (source_ == nullptr)
     return std::make_unique<Reweight>(xformula, yformula);

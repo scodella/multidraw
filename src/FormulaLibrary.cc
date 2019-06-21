@@ -9,11 +9,11 @@ multidraw::FormulaLibrary::FormulaLibrary(TTree& _tree) :
 {
 }
 
-TTreeFormulaCachedPtr
+TTreeFormulaCached&
 multidraw::FormulaLibrary::getFormula(char const* _expr, bool _silent/* = false*/)
 {
   if (_expr == nullptr || std::strlen(_expr) == 0)
-    return TTreeFormulaCachedPtr();
+    throw std::invalid_argument("Empty expression");
   
   std::shared_ptr<TTreeFormulaCached::Cache> cache;
 
@@ -31,19 +31,18 @@ multidraw::FormulaLibrary::getFormula(char const* _expr, bool _silent/* = false*
   }
 
   if (fItr == caches_.end())
-    caches_.emplace(TString(_expr), formula->GetCache());
+    caches_.emplace(std::string(_expr), formula->GetCache());
 
-  TTreeFormulaCachedPtr ptr(formula);
-  formulas_.emplace_back(ptr);
+  formulas_.emplace_back(formula);
 
-  return ptr;
+  return *formula;
 }
 
 void
 multidraw::FormulaLibrary::updateFormulaLeaves()
 {
   for (auto& form : formulas_)
-    form.lock()->UpdateFormulaLeaves();
+    form->UpdateFormulaLeaves();
 }
 
 void
@@ -51,16 +50,4 @@ multidraw::FormulaLibrary::resetCache()
 {
   for (auto& ec : caches_)
     ec.second->fValues.clear();
-}
-
-void
-multidraw::FormulaLibrary::prune()
-{
-  auto itr(formulas_.begin());
-  while (itr != formulas_.end()) {
-    if (itr->expired())
-      itr = formulas_.erase(itr);
-    else
-      ++itr;
-  }
 }

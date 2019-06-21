@@ -3,14 +3,15 @@
 
 #include "TTreeFormulaCached.h"
 #include "FormulaLibrary.h"
+#include "FunctionLibrary.h"
+#include "ExprFiller.h"
 
 #include "TString.h"
 
 #include <vector>
+#include <memory>
 
 namespace multidraw {
-
-  class ExprFiller;
 
   class Cut {
   public:
@@ -21,7 +22,7 @@ namespace multidraw {
     void setPrintLevel(int);
 
     unsigned getNFillers() const { return fillers_.size(); }
-    ExprFiller const* getFiller(unsigned i) const { return fillers_.at(i); }
+    ExprFiller const* getFiller(unsigned i) const { return fillers_.at(i).get(); }
 
     void setCutExpr(char const* expr) { cutExpr_ = expr; }
     TString const& getCutExpr() const { return cutExpr_; }
@@ -30,13 +31,13 @@ namespace multidraw {
     void setCategorization(char const* expr);
     int getNCategories() const;
 
-    void addFiller(ExprFiller& _filler) { fillers_.push_back(&_filler); }
+    void addFiller(ExprFillerPtr&& _filler) { fillers_.emplace_back(std::move(_filler)); }
 
-    void bindTree(FormulaLibrary&);
+    void bindTree(FormulaLibrary&, FunctionLibrary&);
     void unlinkTree();
-    Cut* threadClone(FormulaLibrary&) const;
+    std::unique_ptr<Cut> threadClone(FormulaLibrary&, FunctionLibrary&) const;
 
-    bool cutDependsOn(TTree const*) const;
+    bool dependsOn(TTree const&) const;
 
     void initialize();
     bool evaluate();
@@ -49,15 +50,17 @@ namespace multidraw {
     TString cutExpr_{""};
     std::vector<TString> categoryExprs_{};
     TString categorizationExpr_{""};
-    std::vector<ExprFiller*> fillers_{};
+    std::vector<ExprFillerPtr> fillers_{};
     int printLevel_{0};
     unsigned counter_{0};
 
     std::vector<int> categoryIndex_{};
-    TTreeFormulaCachedPtr compiledCut_{nullptr};
-    std::vector<TTreeFormulaCachedPtr> compiledCategories_{};
-    TTreeFormulaCachedPtr compiledCategorization_{};
+    TTreeFormulaCached* compiledCut_{};
+    std::vector<TTreeFormulaCached*> compiledCategories_{};
+    TTreeFormulaCached* compiledCategorization_{};
   };
+
+  typedef std::unique_ptr<Cut> CutPtr;
 
 }
 

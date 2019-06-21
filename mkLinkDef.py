@@ -68,8 +68,8 @@ with open(thisdir + '/' + linkdef_path, 'w') as out:
         else:
             with open(thisdir + '/interface/' + fname) as source:
                 for line in source:
-                    if line.startswith('  class '):
-                        out.write('#pragma link C++ class multidraw::%s;\n' % line.strip().split()[1])
+                    if line.startswith('  class ') and line.strip().endswith('{'):
+                        out.write('#pragma link C++ class multidraw::%s-;\n' % line.strip().split()[1])
 
     out.write('#endif\n')
 

@@ -198,7 +198,7 @@ namespace multidraw {
 
   private:
     //! Handle addPlot and addTree with the same interface (requires a callback to generate the right object)
-    Cut& findCut_(TString const& cutName) const;
+    Cut& findCut_(char const* cutName) const;
     
     struct SynchTools {
       std::thread::id mainThread;
@@ -222,7 +222,7 @@ namespace multidraw {
     TString treeName_{"events"};
     std::vector<TString> inputPaths_{};
 
-    std::vector<TChain*> friendTrees_{};
+    std::vector<std::unique_ptr<TChain>> friendTrees_{};
 
     TEntryList* entryList_{nullptr};
 
@@ -235,8 +235,9 @@ namespace multidraw {
     unsigned inputMultiplexing_{1};
     unsigned prescale_{1};
 
-    std::map<TString, Cut*> cuts_;
-    std::vector<std::pair<TString, TString>> aliases_;
+    CutPtr filter_{};
+    std::map<TString, CutPtr> cuts_{};
+    std::vector<std::pair<TString, TString>> aliases_{};
 
     double globalWeight_{1.};
     ReweightSourcePtr globalReweightSource_{};

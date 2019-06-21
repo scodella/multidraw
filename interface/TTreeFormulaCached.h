@@ -30,7 +30,7 @@ public:
   Int_t GetNdata()/* override*/;
   Double_t EvalInstance(Int_t, char const* [] = nullptr)/* override*/;
 
-  std::shared_ptr<Cache> const& GetCache() const { return fCache; }
+  CachePtr const& GetCache() const { return fCache; }
 
   TObjArray const* GetListOfLeaves() const { return &fLeaves; }
 
@@ -39,8 +39,6 @@ private:
 
   ClassDef(TTreeFormulaCached, 1)
 };
-
-typedef std::shared_ptr<TTreeFormulaCached> TTreeFormulaCachedPtr;
 
 /*
   TFormula has no foolproof mechanism to signal a failure of expression compilation.

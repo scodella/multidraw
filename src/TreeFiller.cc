@@ -73,7 +73,7 @@ multidraw::TreeFiller::addBranch(char const* _bname, char const* _expr, bool _re
     tree.Branch(_bname, &bvalues_.back(), TString::Format("%s/D", _bname));
 
   bnames_.emplace_back(_bname);
-  exprs_.emplace_back(_expr);
+  sources_.emplace_back(_expr);
 }
 
 void
@@ -83,7 +83,7 @@ multidraw::TreeFiller::doFill_(unsigned _iD, int/* = -1*/)
     std::cout << "            Fill(";
 
   for (unsigned iE(0); iE != compiledExprs_.size(); ++iE) {
-    bvalues_[iE] = compiledExprs_[iE]->EvalInstance(_iD);
+    bvalues_[iE] = compiledExprs_[iE]->evaluate(_iD);
 
     if (printLevel_ > 3) {
       std::cout << bvalues_[iE];

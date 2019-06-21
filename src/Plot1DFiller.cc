@@ -9,7 +9,7 @@ multidraw::Plot1DFiller::Plot1DFiller(TH1& _hist, char const* _expr, char const*
   ExprFiller(_hist, _reweight),
   overflowMode_(_mode)
 {
-  exprs_.emplace_back(_expr);
+  sources_.emplace_back(_expr);
 }
 
 multidraw::Plot1DFiller::Plot1DFiller(TObjArray& _histlist, char const* _expr, char const* _reweight/* = ""*/, Plot1DFiller::OverflowMode _mode/* = kDefault*/) :
@@ -17,7 +17,7 @@ multidraw::Plot1DFiller::Plot1DFiller(TObjArray& _histlist, char const* _expr, c
   overflowMode_(_mode),
   categorized_(true)
 {
-  exprs_.emplace_back(_expr);
+  sources_.emplace_back(_expr);
 }
 
 multidraw::Plot1DFiller::Plot1DFiller(Plot1DFiller const& _orig) :
@@ -69,10 +69,10 @@ multidraw::Plot1DFiller::getHist(int _icat/* = -1*/)
 void
 multidraw::Plot1DFiller::doFill_(unsigned _iD, int _icat/* = -1*/)
 {
-  if (printLevel_ > 3)
-    std::cout << "            Fill(" << compiledExprs_[0]->EvalInstance(_iD) << "; " << entryWeight_ << ")" << std::endl;
+  double x(compiledExprs_[0]->evaluate(_iD));
 
-  double x(compiledExprs_[0]->EvalInstance(_iD));
+  if (printLevel_ > 3)
+    std::cout << "            Fill(" << x << "; " << entryWeight_ << ")" << std::endl;
 
   auto& hist(getHist(_icat));
 
@@ -98,6 +98,7 @@ multidraw::Plot1DFiller::clone_()
   if (categorized_) {
     auto& myArray(static_cast<TObjArray&>(tobj_));
 
+    // this array will be deleted in the clone ctor
     auto* array(new TObjArray());
     array->SetOwner(true);
 

@@ -5,7 +5,7 @@
 
 #include "TString.h"
 
-#include <map>
+#include <unordered_map>
 #include <list>
 #include <memory>
 
@@ -24,19 +24,18 @@ namespace multidraw {
      * an attribute of the formula object itself. Since the grouping can be different for each filler, this
      * means we cannot cache the formulas themselves and reuse among the fillers.
      */
-    TTreeFormulaCachedPtr getFormula(char const* expr, bool silent = false);
+    TTreeFormulaCached& getFormula(char const* expr, bool silent = false);
 
     void updateFormulaLeaves();
     void resetCache();
 
     unsigned size() const { return formulas_.size(); }
-    void prune();
 
   private:
     TTree& tree_;
 
-    std::map<TString, TTreeFormulaCached::CachePtr> caches_{};
-    std::list<std::weak_ptr<TTreeFormulaCached>> formulas_{};
+    std::unordered_map<std::string, TTreeFormulaCached::CachePtr> caches_{};
+    std::list<std::unique_ptr<TTreeFormulaCached>> formulas_{};
   };
 
 }
