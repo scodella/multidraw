@@ -1,5 +1,12 @@
 #include "../interface/CompiledExpr.h"
 
+multidraw::CompiledExpr::CompiledExpr(TTreeFunction& _function) :
+  function_(&_function)
+{
+  if (!function_->isLinked())
+    throw std::runtime_error("Unlinked TTreeFunction used to construct CompiledExpr");
+}
+
 unsigned
 multidraw::CompiledExpr::getNdata()
 {

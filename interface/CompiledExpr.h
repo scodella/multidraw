@@ -25,7 +25,7 @@ namespace multidraw {
   class CompiledExpr {
   public:
     CompiledExpr(TTreeFormulaCached& formula) : formula_(&formula) {}
-    CompiledExpr(TTreeFunction& function) : function_(&function) {}
+    CompiledExpr(TTreeFunction&);
     ~CompiledExpr() {}
 
     TTreeFormulaCached* getFormula() const { return formula_; }
