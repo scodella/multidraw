@@ -5,19 +5,19 @@
 #include <sstream>
 #include <thread>
 
-multidraw::Plot1DFiller::Plot1DFiller(TH1& _hist, char const* _expr, char const* _reweight/* = ""*/, Plot1DFiller::OverflowMode _mode/* = kDefault*/) :
+multidraw::Plot1DFiller::Plot1DFiller(TH1& _hist, CompiledExprSource const& _source, char const* _reweight/* = ""*/, Plot1DFiller::OverflowMode _mode/* = kDefault*/) :
   ExprFiller(_hist, _reweight),
   overflowMode_(_mode)
 {
-  sources_.emplace_back(_expr);
+  sources_.push_back(_source);
 }
 
-multidraw::Plot1DFiller::Plot1DFiller(TObjArray& _histlist, char const* _expr, char const* _reweight/* = ""*/, Plot1DFiller::OverflowMode _mode/* = kDefault*/) :
+multidraw::Plot1DFiller::Plot1DFiller(TObjArray& _histlist, CompiledExprSource const& _source, char const* _reweight/* = ""*/, Plot1DFiller::OverflowMode _mode/* = kDefault*/) :
   ExprFiller(_histlist, _reweight),
   overflowMode_(_mode),
   categorized_(true)
 {
-  sources_.emplace_back(_expr);
+  sources_.push_back(_source);
 }
 
 multidraw::Plot1DFiller::Plot1DFiller(Plot1DFiller const& _orig) :

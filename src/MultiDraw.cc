@@ -1,4 +1,6 @@
 #include "../interface/MultiDraw.h"
+#include "../interface/FormulaLibrary.h"
+#include "../interface/FunctionLibrary.h"
 
 #include "TFile.h"
 #include "TBranch.h"
@@ -153,89 +155,49 @@ multidraw::MultiDraw::setPrescale(unsigned _p, char const* _evtNumBranch/* = ""*
 multidraw::Plot1DFiller&
 multidraw::MultiDraw::addPlot(TH1* _hist, char const* _expr, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/, Plot1DFiller::OverflowMode _overflowMode/* = kDefault*/)
 {
-  if (printLevel_ > 1) {
-    std::cout << "\nAdding plot " << _hist->GetName() << " with expression " << _expr << std::endl;
-    if (_cutName != nullptr && std::strlen(_cutName) != 0)
-      std::cout << " Cut: " << _cutName << std::endl;
-    if (_reweight != nullptr && std::strlen(_reweight) != 0)
-      std::cout << " Reweight: " << _reweight << std::endl;
-  }
+  return addPlot_(_hist, CompiledExprSource(_expr), _cutName, _reweight, _overflowMode);
+}
 
-  auto& cut(findCut_(_cutName));
-
-  auto* filler(new Plot1DFiller(*_hist, _expr, _reweight, _overflowMode));
-
-  cut.addFiller(std::unique_ptr<ExprFiller>(filler));
-
-  return *filler;
+multidraw::Plot1DFiller&
+multidraw::MultiDraw::addPlot(TH1* _hist, TTreeFunction const& _func, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/, Plot1DFiller::OverflowMode _overflowMode/* = kDefault*/)
+{
+  return addPlot_(_hist, CompiledExprSource(_func), _cutName, _reweight, _overflowMode);
 }
 
 multidraw::Plot1DFiller&
 multidraw::MultiDraw::addPlotList(TObjArray* _histlist, char const* _expr, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/, Plot1DFiller::OverflowMode _overflowMode/* = kDefault*/)
 {
-  if (printLevel_ > 1) {
-    std::cout << "\nAdding plot list with expression " << _expr << std::endl;
-    if (_cutName != nullptr && std::strlen(_cutName) != 0)
-      std::cout << " Cut: " << _cutName << std::endl;
-    if (_reweight != nullptr && std::strlen(_reweight) != 0)
-      std::cout << " Reweight: " << _reweight << std::endl;
-  }
+  return addPlotList_(_histlist, CompiledExprSource(_expr), _cutName, _reweight, _overflowMode);
+}
 
-  auto& cut(findCut_(_cutName));
-
-  int ncat(cut.getNCategories());
-  if (ncat != -1 && ncat !=_histlist->GetEntries())
-    throw std::runtime_error("Size of histogram list does not match the number of categories");
-
-  auto* filler(new Plot1DFiller(*_histlist, _expr, _reweight, _overflowMode));
-
-  cut.addFiller(std::unique_ptr<ExprFiller>(filler));
-
-  return *filler;
+multidraw::Plot1DFiller&
+multidraw::MultiDraw::addPlotList(TObjArray* _histlist, TTreeFunction const& _func, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/, Plot1DFiller::OverflowMode _overflowMode/* = kDefault*/)
+{
+  return addPlotList_(_histlist, CompiledExprSource(_func), _cutName, _reweight, _overflowMode);
 }
 
 multidraw::Plot2DFiller&
 multidraw::MultiDraw::addPlot2D(TH2* _hist, char const* _xexpr, char const* _yexpr, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/)
 {
-  if (printLevel_ > 1) {
-    std::cout << "\nAdding Plot " << _hist->GetName() << " with expression " << _yexpr << ":" << _xexpr << std::endl;
-    if (_cutName != nullptr && std::strlen(_cutName) != 0)
-      std::cout << " Cut: " << _cutName << std::endl;
-    if (_reweight != nullptr && std::strlen(_reweight) != 0)
-      std::cout << " Reweight: " << _reweight << std::endl;
-  }
+  return addPlot2D_(_hist, CompiledExprSource(_xexpr), CompiledExprSource(_yexpr), _cutName, _reweight);
+}
 
-  auto& cut(findCut_(_cutName));
-
-  auto* filler(new Plot2DFiller(*_hist, _xexpr, _yexpr, _reweight));
-
-  cut.addFiller(std::unique_ptr<ExprFiller>(filler));
-
-  return *filler;
+multidraw::Plot2DFiller&
+multidraw::MultiDraw::addPlot2D(TH2* _hist, TTreeFunction const& _xfunc, TTreeFunction const& _yfunc, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/)
+{
+  return addPlot2D_(_hist, CompiledExprSource(_xfunc), CompiledExprSource(_yfunc), _cutName, _reweight);
 }
 
 multidraw::Plot2DFiller&
 multidraw::MultiDraw::addPlotList2D(TObjArray* _histlist, char const* _xexpr, char const* _yexpr, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/)
 {
-  if (printLevel_ > 1) {
-    std::cout << "\nAdding plot list with expression " << _yexpr << ":" << _xexpr << std::endl;
-    if (_cutName != nullptr && std::strlen(_cutName) != 0)
-      std::cout << " Cut: " << _cutName << std::endl;
-    if (_reweight != nullptr && std::strlen(_reweight) != 0)
-      std::cout << " Reweight: " << _reweight << std::endl;
-  }
+  return addPlotList2D_(_histlist, CompiledExprSource(_xexpr), CompiledExprSource(_yexpr), _cutName, _reweight);
+}
 
-  auto& cut(findCut_(_cutName));
-
-  int ncat(cut.getNCategories());
-  if (ncat != -1 && ncat !=_histlist->GetEntries())
-    throw std::runtime_error("Size of histogram list does not match the number of categories");
-
-  auto* filler(new Plot2DFiller(*_histlist, _xexpr, _yexpr, _reweight));
-
-  cut.addFiller(std::unique_ptr<ExprFiller>(filler));
-
-  return *filler;
+multidraw::Plot2DFiller&
+multidraw::MultiDraw::addPlotList2D(TObjArray* _histlist, TTreeFunction const& _xfunc, TTreeFunction const& _yfunc, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/)
+{
+  return addPlotList2D_(_histlist, CompiledExprSource(_xfunc), CompiledExprSource(_yfunc), _cutName, _reweight);
 }
 
 multidraw::TreeFiller&
@@ -274,6 +236,110 @@ multidraw::MultiDraw::findCut_(char const* _cutName) const
   }
 
   return *cutItr->second;
+}
+
+multidraw::Plot1DFiller&
+multidraw::MultiDraw::addPlot_(TH1* _hist, CompiledExprSource const& _source, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/, Plot1DFiller::OverflowMode _overflowMode/* = kDefault*/)
+{
+  if (printLevel_ > 1) {
+    std::cout << "\nAdding plot " << _hist->GetName() << " with ";
+    if (_source.getFormula().Length() != 0)
+      std::cout << "expression " << _source.getFormula() << std::endl;
+    else
+      std::cout << "function " << _source.getFunction()->getName() << std::endl;
+    if (_cutName != nullptr && std::strlen(_cutName) != 0)
+      std::cout << " Cut: " << _cutName << std::endl;
+    if (_reweight != nullptr && std::strlen(_reweight) != 0)
+      std::cout << " Reweight: " << _reweight << std::endl;
+  }
+
+  auto& cut(findCut_(_cutName));
+
+  auto* filler(new Plot1DFiller(*_hist, _source, _reweight, _overflowMode));
+
+  cut.addFiller(std::unique_ptr<ExprFiller>(filler));
+
+  return *filler;
+}
+
+multidraw::Plot1DFiller&
+multidraw::MultiDraw::addPlotList_(TObjArray* _histlist, CompiledExprSource const& _source, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/, Plot1DFiller::OverflowMode _overflowMode/* = kDefault*/)
+{
+  if (printLevel_ > 1) {
+    std::cout << "\nAdding plot list with ";
+    if (_source.getFormula().Length() != 0)
+      std::cout << "expression " << _source.getFormula() << std::endl;
+    else
+      std::cout << "function " << _source.getFunction()->getName() << std::endl;
+    if (_cutName != nullptr && std::strlen(_cutName) != 0)
+      std::cout << " Cut: " << _cutName << std::endl;
+    if (_reweight != nullptr && std::strlen(_reweight) != 0)
+      std::cout << " Reweight: " << _reweight << std::endl;
+  }
+
+  auto& cut(findCut_(_cutName));
+
+  int ncat(cut.getNCategories());
+  if (ncat != -1 && ncat !=_histlist->GetEntries())
+    throw std::runtime_error("Size of histogram list does not match the number of categories");
+
+  auto* filler(new Plot1DFiller(*_histlist, _source, _reweight, _overflowMode));
+
+  cut.addFiller(std::unique_ptr<ExprFiller>(filler));
+
+  return *filler;
+}
+
+multidraw::Plot2DFiller&
+multidraw::MultiDraw::addPlot2D_(TH2* _hist, CompiledExprSource const& _xsource, CompiledExprSource const& _ysource, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/)
+{
+  if (printLevel_ > 1) {
+    std::cout << "\nAdding Plot " << _hist->GetName() << " with";
+    if (_xsource.getFormula().Length() != 0)
+      std::cout << " expression " << _ysource.getFormula() << ":" << _xsource.getFormula() << std::endl;
+    else
+      std::cout << " function " << _ysource.getFunction()->getName() << ":" << _xsource.getFunction()->getName() << std::endl;
+    if (_cutName != nullptr && std::strlen(_cutName) != 0)
+      std::cout << " Cut: " << _cutName << std::endl;
+    if (_reweight != nullptr && std::strlen(_reweight) != 0)
+      std::cout << " Reweight: " << _reweight << std::endl;
+  }
+
+  auto& cut(findCut_(_cutName));
+
+  auto* filler(new Plot2DFiller(*_hist, _xsource, _ysource, _reweight));
+
+  cut.addFiller(std::unique_ptr<ExprFiller>(filler));
+
+  return *filler;
+}
+
+multidraw::Plot2DFiller&
+multidraw::MultiDraw::addPlotList2D_(TObjArray* _histlist, CompiledExprSource const& _xsource, CompiledExprSource const& _ysource, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/)
+{
+  if (printLevel_ > 1) {
+    std::cout << "\nAdding plot list with";
+    if (_xsource.getFormula().Length() != 0)
+      std::cout << " expression " << _ysource.getFormula() << ":" << _xsource.getFormula() << std::endl;
+    else
+      std::cout << " function " << _ysource.getFunction()->getName() << ":" << _xsource.getFunction()->getName() << std::endl;
+    if (_cutName != nullptr && std::strlen(_cutName) != 0)
+      std::cout << " Cut: " << _cutName << std::endl;
+    if (_reweight != nullptr && std::strlen(_reweight) != 0)
+      std::cout << " Reweight: " << _reweight << std::endl;
+  }
+
+  auto& cut(findCut_(_cutName));
+
+  int ncat(cut.getNCategories());
+  if (ncat != -1 && ncat !=_histlist->GetEntries())
+    throw std::runtime_error("Size of histogram list does not match the number of categories");
+
+  auto* filler(new Plot2DFiller(*_histlist, _xsource, _ysource, _reweight));
+
+  cut.addFiller(std::unique_ptr<ExprFiller>(filler));
+
+  return *filler;
 }
 
 unsigned
@@ -707,10 +773,10 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
   std::unordered_map<unsigned, std::pair<ReweightPtr, bool>> treeReweights;
 
   if (globalReweightSource_)
-    globalReweight = globalReweightSource_->compile(library);
+    globalReweight = globalReweightSource_->compile(library, flibrary);
 
   for (auto& tr : treeReweightSources_)
-    treeReweights.emplace(tr.first, std::make_pair(tr.second.first->compile(library), tr.second.second));
+    treeReweights.emplace(tr.first, std::make_pair(tr.second.first->compile(library, flibrary), tr.second.second));
 
   // Preparing for the event loop
   std::vector<double> eventWeights;
@@ -829,6 +895,8 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
 
     if (iLocalEntry < 0)
       break;
+
+    flibrary.setEntry(iEntryNumber);
 
     ++iEntry;
 

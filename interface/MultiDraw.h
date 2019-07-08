@@ -145,15 +145,23 @@ namespace multidraw {
     //! Add a 1D histogram to fill.
     Plot1DFiller& addPlot(TH1* hist, char const* expr, char const* cutName = "", char const* reweight = "", Plot1DFiller::OverflowMode mode = Plot1DFiller::kDefault);
 
+    Plot1DFiller& addPlot(TH1* hist, TTreeFunction const& func, char const* cutName = "", char const* reweight = "", Plot1DFiller::OverflowMode mode = Plot1DFiller::kDefault);
+
     //! Add a 2D histogram to fill.
     Plot2DFiller& addPlot2D(TH2* hist, char const* xexpr, char const* yexpr, char const* cutName = "", char const* reweight = "");
+
+    Plot2DFiller& addPlot2D(TH2* hist, TTreeFunction const& xfunc, TTreeFunction const& yfunc, char const* cutName = "", char const* reweight = "");
 
     //! Add a 1D histogram to fill by a category group.
     Plot1DFiller& addPlotList(TObjArray* histlist, char const* expr, char const* cutName, char const* reweight = "", Plot1DFiller::OverflowMode mode = Plot1DFiller::kDefault);
 
+    Plot1DFiller& addPlotList(TObjArray* histlist, TTreeFunction const& func, char const* cutName, char const* reweight = "", Plot1DFiller::OverflowMode mode = Plot1DFiller::kDefault);
+
     //! Add a 2D histogram to fill by a category group.
     Plot2DFiller& addPlotList2D(TObjArray* histlist, char const* xexpr, char const* yexpr, char const* cutName, char const* reweight = "");
 
+    Plot2DFiller& addPlotList2D(TObjArray* histlist, TTreeFunction const& xexpr, TTreeFunction const& yexpr, char const* cutName, char const* reweight = "");
+    
     //! Add a tree to fill.
     TreeFiller& addTree(TTree* tree, char const* cutName = "", char const* reweight = "");
 
@@ -199,6 +207,11 @@ namespace multidraw {
   private:
     //! Handle addPlot and addTree with the same interface (requires a callback to generate the right object)
     Cut& findCut_(char const* cutName) const;
+
+    Plot1DFiller& addPlot_(TH1* hist, CompiledExprSource const& source, char const* cutName, char const* reweight, Plot1DFiller::OverflowMode mode);
+    Plot2DFiller& addPlot2D_(TH2* hist, CompiledExprSource const& xsource, CompiledExprSource const& ysource, char const* cutName, char const* reweight);
+    Plot1DFiller& addPlotList_(TObjArray* histlist, CompiledExprSource const& source, char const* cutName, char const* reweight, Plot1DFiller::OverflowMode mode);
+    Plot2DFiller& addPlotList2D_(TObjArray* histlist, CompiledExprSource const& xsource, CompiledExprSource const& ysource, char const* cutName, char const* reweight);
     
     struct SynchTools {
       std::thread::id mainThread;

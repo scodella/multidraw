@@ -44,15 +44,11 @@ multidraw::ExprFiller::bindTree(FormulaLibrary& _formulaLibrary, FunctionLibrary
 {
   unlinkTree();
 
-  for (auto& source : sources_) {
-    if (std::strlen(source.getFormula()) != 0)
-      compiledExprs_.emplace_back(new CompiledExpr(_formulaLibrary.getFormula(source.getFormula())));
-    else
-      compiledExprs_.emplace_back(new CompiledExpr(_functionLibrary.getFunction(*source.getFunction())));
-  }
+  for (auto& source : sources_)
+    compiledExprs_.emplace_back(source.compile(_formulaLibrary, _functionLibrary));
 
   if (reweightSource_)
-    compiledReweight_ = reweightSource_->compile(_formulaLibrary);
+    compiledReweight_ = reweightSource_->compile(_formulaLibrary, _functionLibrary);
 
   counter_ = 0;
 }

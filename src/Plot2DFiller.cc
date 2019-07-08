@@ -5,19 +5,19 @@
 #include <sstream>
 #include <thread>
 
-multidraw::Plot2DFiller::Plot2DFiller(TH2& _hist, char const* _xexpr, char const* _yexpr, char const* _reweight/* = ""*/) :
+multidraw::Plot2DFiller::Plot2DFiller(TH2& _hist, CompiledExprSource const& _xsource, CompiledExprSource const& _ysource, char const* _reweight/* = ""*/) :
   ExprFiller(_hist, _reweight)
 {
-  sources_.push_back(_xexpr);
-  sources_.push_back(_yexpr);
+  sources_.push_back(_xsource);
+  sources_.push_back(_ysource);
 }
 
-multidraw::Plot2DFiller::Plot2DFiller(TObjArray& _histlist, char const* _xexpr, char const* _yexpr, char const* _reweight/* = ""*/) :
+multidraw::Plot2DFiller::Plot2DFiller(TObjArray& _histlist, CompiledExprSource const& _xsource, CompiledExprSource const& _ysource, char const* _reweight/* = ""*/) :
   ExprFiller(_histlist, _reweight),
   categorized_(true)
 {
-  sources_.push_back(_xexpr);
-  sources_.push_back(_yexpr);
+  sources_.push_back(_xsource);
+  sources_.push_back(_ysource);
 }
 
 multidraw::Plot2DFiller::Plot2DFiller(Plot2DFiller const& _orig) :

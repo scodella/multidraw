@@ -12,6 +12,9 @@ namespace multidraw {
     TTreeFunction() {}
     virtual ~TTreeFunction() {}
 
+    virtual char const* getName() const = 0;
+    virtual TTreeFunction* clone() const = 0;
+    
     std::unique_ptr<TTreeFunction> linkedCopy(FunctionLibrary&) const;
 
     bool isLinked() const { return linked_; }
@@ -20,7 +23,6 @@ namespace multidraw {
     virtual double evaluate(unsigned) = 0;
 
   protected:
-    virtual TTreeFunction* clone_() const = 0;
     virtual void bindTree_(FunctionLibrary&) = 0;
 
   private:

@@ -3,9 +3,9 @@
 multidraw::TTreeFunctionPtr
 multidraw::TTreeFunction::linkedCopy(FunctionLibrary& _library) const
 {
-  auto* clone{clone_()};
-  clone->bindTree_(_library);
-  clone->linked_ = true;
+  auto* copy{clone()};
+  copy->bindTree_(_library);
+  copy->linked_ = true;
 
-  return TTreeFunctionPtr(clone);
+  return TTreeFunctionPtr(copy);
 }

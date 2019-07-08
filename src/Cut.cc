@@ -1,5 +1,8 @@
 #include "../interface/Cut.h"
 #include "../interface/ExprFiller.h"
+#include "../interface/FormulaLibrary.h"
+#include "../interface/FunctionLibrary.h"
+#include "../interface/TTreeFormulaCached.h"
 
 #include "TTreeFormulaManager.h"
 #include "TTree.h"

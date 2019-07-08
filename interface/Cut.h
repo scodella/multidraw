@@ -1,9 +1,6 @@
 #ifndef multidraw_Cut_h
 #define multidraw_Cut_h
 
-#include "TTreeFormulaCached.h"
-#include "FormulaLibrary.h"
-#include "FunctionLibrary.h"
 #include "ExprFiller.h"
 
 #include "TString.h"
@@ -11,7 +8,12 @@
 #include <vector>
 #include <memory>
 
+class TTreeFormulaCached;
+
 namespace multidraw {
+
+  class FormulaLibrary;
+  class FunctionLibrary;
 
   class Cut {
   public:

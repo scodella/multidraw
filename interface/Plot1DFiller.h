@@ -27,8 +27,8 @@ namespace multidraw {
       kMergeLast
     };
 
-    Plot1DFiller(TH1& hist, char const* expr, char const* reweight = "", OverflowMode mode = kDefault);
-    Plot1DFiller(TObjArray& histlist, char const* expr, char const* reweight = "", OverflowMode mode = kDefault);
+    Plot1DFiller(TH1& hist, CompiledExprSource const& expr, char const* reweight = "", OverflowMode mode = kDefault);
+    Plot1DFiller(TObjArray& histlist, CompiledExprSource const& expr, char const* reweight = "", OverflowMode mode = kDefault);
     Plot1DFiller(Plot1DFiller const&);
     ~Plot1DFiller() {}
 

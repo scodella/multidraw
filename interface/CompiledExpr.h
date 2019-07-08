@@ -8,18 +8,25 @@
 
 namespace multidraw {
 
+  class FormulaLibrary;
+  class FunctionLibrary;
+  class CompiledExpr;
+
   class CompiledExprSource {
   public:
+    CompiledExprSource() {}
     CompiledExprSource(char const* formula) : formula_(formula) {}
-    CompiledExprSource(std::shared_ptr<TTreeFunction> const& function) : function_(function) {}
-    CompiledExprSource(CompiledExprSource const& orig) : formula_(orig.formula_), function_(orig.function_) {}
+    CompiledExprSource(TTreeFunction const& function) : function_(function.clone()) {}
+    CompiledExprSource(CompiledExprSource const& orig) : formula_(orig.formula_), function_(orig.function_ ? orig.function_->clone() : nullptr) {}
 
-    char const* getFormula() const { return formula_; }
+    TString const& getFormula() const { return formula_; }
     TTreeFunction const* getFunction() const { return function_.get(); }
+
+    std::unique_ptr<CompiledExpr> compile(FormulaLibrary&, FunctionLibrary&) const;
 
   private:
     TString formula_{};
-    std::shared_ptr<TTreeFunction> function_{};
+    std::unique_ptr<TTreeFunction> function_{};
   };
 
   class CompiledExpr {

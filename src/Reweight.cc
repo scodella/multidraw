@@ -1,121 +1,90 @@
 #include "../interface/Reweight.h"
 #include "../interface/FormulaLibrary.h"
+#include "../interface/FunctionLibrary.h"
 
 #include "TClass.h"
 #include "TTreeFormulaManager.h"
 
-multidraw::Reweight::Reweight(TTreeFormulaCached* _xformula, TTreeFormulaCached* _yformula/* = nullptr*/)
+multidraw::Reweight::Reweight(CompiledExprPtr&& _x, TObject const* _source/* = nullptr*/) :
+  source_(_source)
 {
-  set(_xformula, _yformula);
+  exprs_.emplace_back(std::move(_x));
+  setEvalType_();
 }
   
-multidraw::Reweight::Reweight(TObject const& _source, TTreeFormulaCached* _x, TTreeFormulaCached* _y/* = nullptr*/, TTreeFormulaCached* _z/* = nullptr*/)
+multidraw::Reweight::Reweight(CompiledExprPtr&& _x, CompiledExprPtr&& _y, TObject const* _source) :
+  source_(_source)
 {
-  set(_source, _x, _y, _z);
-}
-
-void
-multidraw::Reweight::set(TTreeFormulaCached* _xformula, TTreeFormulaCached* _yformula/* = nullptr*/)
-{
-  formulas_.assign(1, _xformula);
-  if (_yformula)
-    formulas_.push_back(_yformula);
-
-  source_ = nullptr;
-  setRaw_();
-}
-
-void
-multidraw::Reweight::set(TObject const& _source, TTreeFormulaCached* _x, TTreeFormulaCached* _y/* = nullptr*/, TTreeFormulaCached* _z/* = nullptr*/)
-{
-  formulas_.assign(1, _x);
-  if (_y)
-    formulas_.push_back(_y);
-  if (_z)
-    formulas_.push_back(_z);
-
-  if (formulas_.size() != 1) {
-    auto* manager(formulas_[0]->GetManager());
-    for (unsigned iF(1); iF != formulas_.size(); ++iF)
-      manager->Add(formulas_[iF]);
-
+  exprs_.emplace_back(std::move(_x));
+  exprs_.emplace_back(std::move(_y));
+  
+  if (exprs_[0]->getFormula() != nullptr && exprs_[1]->getFormula() != nullptr) {
+    auto* manager(exprs_[0]->getFormula()->GetManager());
+    manager->Add(exprs_[1]->getFormula());
     manager->Sync();
   }
 
-  source_ = &_source;
-  if (source_->InheritsFrom(TH1::Class()))
-    setTH1_();
-  else if (source_->InheritsFrom(TGraph::Class()))
-    setTGraph_();
-  else if (source_->InheritsFrom(TF1::Class()))
-    setTF1_();
+  setEvalType_();
+}
+
+void
+multidraw::Reweight::setEvalType_()
+{
+  if (source_ == nullptr)
+    evaluate_ = [this](unsigned i)->double { return this->evaluateRaw_(i); };
+  else if (source_->InheritsFrom(TH1::Class())) {
+    auto& hist(static_cast<TH1 const&>(*source_));
+
+    if (hist.GetDimension() != int(exprs_.size()))
+      throw std::runtime_error(std::string("Invalid number of formulas given for histogram source of type ") + hist.IsA()->GetName());
+
+    evaluate_ = [this](unsigned i)->double { return this->evaluateTH1_(i); };
+  }
+  else if (source_->InheritsFrom(TGraph::Class())) {
+    spline_.reset(new TSpline3("interpolation", static_cast<TGraph const*>(source_)));
+  
+    evaluate_ = [this](unsigned i)->double { return this->evaluateTGraph_(i); };
+  }
+  else if (source_->InheritsFrom(TF1::Class())) {
+    auto& fct(static_cast<TF1 const&>(*source_));
+
+    if (fct.GetNdim() != int(exprs_.size()))
+      throw std::runtime_error(std::string("Invalid number of formulas given for function source of type ") + fct.IsA()->GetName());
+
+    evaluate_ = [this](unsigned i)->double { return this->evaluateTF1_(i); };
+  }
   else
     throw std::runtime_error(TString::Format("Object of incompatible class %s passed to Reweight", source_->IsA()->GetName()).Data());
 }
 
-void
-multidraw::Reweight::reset()
+TTreeFormulaCached*
+multidraw::Reweight::getFormula(unsigned i/* = 0*/) const
 {
-  formulas_.clear();
-  source_ = nullptr;
-  spline_.reset();
-  evaluate_ = nullptr;
+  auto& expr(*exprs_.at(i));
+  if (expr.getFormula() == nullptr)
+    throw std::runtime_error("getFormula called on non-formula reweight");
+  return expr.getFormula();
 }
 
 unsigned
 multidraw::Reweight::getNdata()
 {
-  if (formulas_.empty())
+  if (exprs_.empty())
     return 1;
 
-  return formulas_[0]->GetManager()->GetNdata();
-}
-
-void
-multidraw::Reweight::setRaw_()
-{
-  evaluate_ = [this](unsigned i)->double { return this->evaluateRaw_(i); };
-}
-
-void
-
-multidraw::Reweight::setTH1_()
-{
-  auto& hist(static_cast<TH1 const&>(*source_));
-
-  if (hist.GetDimension() != int(formulas_.size()))
-    throw std::runtime_error(std::string("Invalid number of formulas given for histogram source of type ") + hist.IsA()->GetName());
-
-  evaluate_ = [this](unsigned i)->double { return this->evaluateTH1_(i); };
-}
-
-void
-multidraw::Reweight::setTGraph_()
-{
-  spline_.reset(new TSpline3("interpolation", static_cast<TGraph const*>(source_)));
-  
-  evaluate_ = [this](unsigned i)->double { return this->evaluateTGraph_(i); };
-}
-
-void
-multidraw::Reweight::setTF1_()
-{
-  auto& fct(static_cast<TF1 const&>(*source_));
-
-  if (fct.GetNdim() != int(formulas_.size()))
-    throw std::runtime_error(std::string("Invalid number of formulas given for function source of type ") + fct.IsA()->GetName());
-
-  evaluate_ = [this](unsigned i)->double { return this->evaluateTF1_(i); };
+  return exprs_[0]->getNdata();
 }
 
 double
 multidraw::Reweight::evaluateRaw_(unsigned _iD)
 {
-  formulas_[0]->GetNdata();
-  if (_iD != 0)
-    formulas_[0]->EvalInstance(0);
+  if (exprs_[0]->getFormula() != nullptr) {
+    exprs_[0]->getNdata();
+    if (_iD != 0)
+      exprs_[0]->evaluate(0);
+  }
   
-  return formulas_[0]->EvalInstance(_iD);
+  return exprs_[0]->evaluate(_iD);
 }
 
 double
@@ -123,17 +92,19 @@ multidraw::Reweight::evaluateTH1_(unsigned _iD)
 {
   auto& hist(static_cast<TH1 const&>(*source_));
 
-  double x[3]{};
-  for (unsigned iDim(0); iDim != formulas_.size(); ++iDim) {
-    auto& formula(formulas_[iDim]);
-    formula->GetNdata();
-    if (_iD != 0)
-      formula->EvalInstance(0);
+  double x[2]{};
+  for (unsigned iDim(0); iDim != exprs_.size(); ++iDim) {
+    auto& expr(*exprs_[iDim]);
+    if (expr.getFormula() != nullptr) {
+      expr.getNdata();
+      if (_iD != 0)
+        expr.evaluate(0);
+    }
     
-    x[iDim] = formula->EvalInstance(_iD);
+    x[iDim] = expr.evaluate(_iD);
   }
 
-  int iBin(hist.FindFixBin(x[0], x[1], x[2]));
+  int iBin(hist.FindFixBin(x[0], x[1]));
 
   // not handling over/underflow at the moment
 
@@ -145,11 +116,13 @@ multidraw::Reweight::evaluateTGraph_(unsigned _iD)
 {
   auto& graph(static_cast<TGraph const&>(*source_));
 
-  formulas_[0]->GetNdata();
-  if (_iD != 0)
-    formulas_[0]->EvalInstance(0);
+  if (exprs_[0]->getFormula() != nullptr) {
+    exprs_[0]->getNdata();
+    if (_iD != 0)
+      exprs_[0]->evaluate(0);
+  }
   
-  double x(formulas_[0]->EvalInstance(_iD));
+  double x(exprs_[0]->evaluate(_iD));
 
   return graph.Eval(x, spline_.get());
 }
@@ -159,39 +132,25 @@ multidraw::Reweight::evaluateTF1_(unsigned _iD)
 {
   auto& fct(static_cast<TF1 const&>(*source_));
 
-  double x[3]{};
-  for (unsigned iDim(0); iDim != formulas_.size(); ++iDim) {
-    auto& formula(formulas_[iDim]);
-    formula->GetNdata();
-    if (_iD != 0)
-      formula->EvalInstance(0);
-
-    x[iDim] = formula->EvalInstance(_iD);
+  double x[2]{};
+  for (unsigned iDim(0); iDim != exprs_.size(); ++iDim) {
+    auto& expr(*exprs_[iDim]);
+    if (expr.getFormula() != nullptr) {
+      expr.getNdata();
+      if (_iD != 0)
+        expr.evaluate(0);
+    }
+      
+    x[iDim] = expr.evaluate(_iD);
   }
   
-  return fct.Eval(x[0], x[1], x[2]);
+  return fct.Eval(x[0], x[1]);
 }
 
 
-multidraw::FactorizedReweight::FactorizedReweight(ReweightPtr&& _ptr1, ReweightPtr&& _ptr2)
+multidraw::FactorizedReweight::FactorizedReweight(ReweightPtr&& _ptr1, ReweightPtr&& _ptr2) :
+  subReweights_{{std::move(_ptr1), std::move(_ptr2)}}
 {
-  set(std::move(_ptr1), std::move(_ptr2));
-}
-
-void
-multidraw::FactorizedReweight::set(ReweightPtr&& _ptr1, ReweightPtr&& _ptr2)
-{
-  subReweights_[0] = std::move(_ptr1);
-  subReweights_[1] = std::move(_ptr2);
-}
-
-void
-multidraw::FactorizedReweight::reset()
-{
-  subReweights_[0].reset();
-  subReweights_[1].reset();
-
-  Reweight::reset();
 }
 
 TTreeFormulaCached*
@@ -204,8 +163,7 @@ multidraw::FactorizedReweight::getFormula(unsigned i/* = 0*/) const
 }
 
 multidraw::ReweightSource::ReweightSource(ReweightSource const& _orig) :
-  xexpr_(_orig.xexpr_),
-  yexpr_(_orig.yexpr_),
+  exprs_(_orig.exprs_),
   source_(_orig.source_)
 {
   if (_orig.subReweights_[0]) {
@@ -215,18 +173,13 @@ multidraw::ReweightSource::ReweightSource(ReweightSource const& _orig) :
 }
 
 multidraw::ReweightPtr
-multidraw::ReweightSource::compile(FormulaLibrary& _library) const
+multidraw::ReweightSource::compile(FormulaLibrary& _formulaLibrary, FunctionLibrary& _functionLibrary) const
 {
   if (subReweights_[0])
-    return ReweightPtr(new FactorizedReweight(subReweights_[0]->compile(_library), subReweights_[1]->compile(_library)));
+    return ReweightPtr(new FactorizedReweight(subReweights_[0]->compile(_formulaLibrary, _functionLibrary), subReweights_[1]->compile(_formulaLibrary, _functionLibrary)));
 
-  auto* xformula(&_library.getFormula(xexpr_));
-  TTreeFormulaCached* yformula(nullptr);
-  if (yexpr_.Length() != 0)
-    yformula = &_library.getFormula(yexpr_);
-
-  if (source_ == nullptr)
-    return std::make_unique<Reweight>(xformula, yformula);
+  if (exprs_.size() == 1)
+    return std::make_unique<Reweight>(exprs_[0].compile(_formulaLibrary, _functionLibrary), source_);
   else
-    return std::make_unique<Reweight>(*source_, xformula, yformula);
+    return std::make_unique<Reweight>(exprs_[0].compile(_formulaLibrary, _functionLibrary), exprs_[1].compile(_formulaLibrary, _functionLibrary), source_);
 }

@@ -1,4 +1,15 @@
 #include "../interface/CompiledExpr.h"
+#include "../interface/FormulaLibrary.h"
+#include "../interface/FunctionLibrary.h"
+
+std::unique_ptr<multidraw::CompiledExpr>
+multidraw::CompiledExprSource::compile(FormulaLibrary& _formulaLibrary, FunctionLibrary& _functionLibrary) const
+{
+  if (formula_.Length() != 0)
+    return std::make_unique<CompiledExpr>(_formulaLibrary.getFormula(formula_));
+  else
+    return std::make_unique<CompiledExpr>(_functionLibrary.getFunction(*function_));
+}
 
 multidraw::CompiledExpr::CompiledExpr(TTreeFunction& _function) :
   function_(&_function)

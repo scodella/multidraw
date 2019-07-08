@@ -19,8 +19,8 @@ namespace multidraw {
    */
   class Plot2DFiller : public ExprFiller {
   public:
-    Plot2DFiller(TH2& hist, char const* xexpr, char const* yexpr, char const* reweight = "");
-    Plot2DFiller(TObjArray& histlist, char const* xexpr, char const* yexpr, char const* reweight = "");
+    Plot2DFiller(TH2& hist, CompiledExprSource const& xsource, CompiledExprSource const& ysource, char const* reweight = "");
+    Plot2DFiller(TObjArray& histlist, CompiledExprSource const& xsource, CompiledExprSource const& ysource, char const* reweight = "");
     Plot2DFiller(Plot2DFiller const&);
     ~Plot2DFiller() {}
 

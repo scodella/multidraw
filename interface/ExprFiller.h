@@ -2,8 +2,6 @@
 #define multidraw_ExprFiller_h
 
 #include "TTreeFormulaCached.h"
-#include "FormulaLibrary.h"
-#include "FunctionLibrary.h"
 #include "Reweight.h"
 #include "CompiledExpr.h"
 
