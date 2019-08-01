@@ -21,7 +21,8 @@ namespace multidraw {
     FunctionLibrary(TTree& tree) : reader_(new TTreeReader(&tree)) {}
     ~FunctionLibrary();
 
-    void setEntry(long long iEntry) { reader_->SetEntry(iEntry); }
+    //! Set the TTreeReader entry number and call beginEvent() of all linked functions
+    void setEntry(long long iEntry);
 
     TTreeFunction& getFunction(TTreeFunction const&);
 

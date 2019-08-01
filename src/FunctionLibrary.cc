@@ -6,6 +6,14 @@ multidraw::FunctionLibrary::~FunctionLibrary()
     f();
 }
 
+void
+multidraw::FunctionLibrary::setEntry(long long _iEntry)
+{
+  reader_->SetEntry(iEntry);
+  for (auto& fct : functions_)
+    fct.second->beginEvent(_iEntry);
+}
+
 multidraw::TTreeFunction&
 multidraw::FunctionLibrary::getFunction(TTreeFunction const& _source)
 {

@@ -19,6 +19,7 @@ namespace multidraw {
 
     bool isLinked() const { return linked_; }
 
+    virtual void beginEvent(long long) {}
     virtual int getMultiplicity() { return 0; }
     virtual unsigned getNdata() = 0;
     virtual double evaluate(unsigned) = 0;
