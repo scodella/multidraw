@@ -9,7 +9,7 @@ multidraw::FunctionLibrary::~FunctionLibrary()
 void
 multidraw::FunctionLibrary::setEntry(long long _iEntry)
 {
-  reader_->SetEntry(iEntry);
+  reader_->SetEntry(_iEntry);
   for (auto& fct : functions_)
     fct.second->beginEvent(_iEntry);
 }
