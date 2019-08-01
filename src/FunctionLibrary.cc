@@ -1,5 +1,11 @@
 #include "../interface/FunctionLibrary.h"
 
+multidraw::FunctionLibrary::~FunctionLibrary()
+{
+  for (auto& f : destructorCallbacks_)
+    f();
+}
+
 multidraw::TTreeFunction&
 multidraw::FunctionLibrary::getFunction(TTreeFunction const& _source)
 {

@@ -10,6 +10,7 @@
 
 #include <unordered_map>
 #include <memory>
+#include <functional>
 
 typedef std::unique_ptr<ROOT::Internal::TTreeReaderValueBase> TTreeReaderValueBasePtr;
 
@@ -18,7 +19,7 @@ namespace multidraw {
   class FunctionLibrary {
   public:
     FunctionLibrary(TTree& tree) : reader_(new TTreeReader(&tree)) {}
-    ~FunctionLibrary() {}
+    ~FunctionLibrary();
 
     void setEntry(long long iEntry) { reader_->SetEntry(iEntry); }
 
@@ -27,10 +28,18 @@ namespace multidraw {
     template<typename T> TTreeReaderArray<T>& getArray(char const*);
     template<typename T> TTreeReaderValue<T>& getValue(char const*);
 
+    // convenience
+    template<class T> void bindBranch(TTreeReaderValue<T>*&, char const*);
+    template<class T> void bindBranch(TTreeReaderArray<T>*&, char const*);
+
+    void addDestructorCallback(std::function<void(void)> const& f) { destructorCallbacks_.push_back(f); }
+
   private:
     std::unique_ptr<TTreeReader> reader_{};
     std::unordered_map<std::string, TTreeReaderValueBasePtr> branchReaders_{};
     std::unordered_map<TTreeFunction const*, std::unique_ptr<TTreeFunction>> functions_{};
+
+    std::vector<std::function<void(void)>> destructorCallbacks_;
   };
   
 }
@@ -44,6 +53,11 @@ multidraw::FunctionLibrary::getArray(char const* _bname)
 {
   auto rItr(branchReaders_.find(_bname));
   if (rItr == branchReaders_.end()) {
+    if (reader_->GetTree()->GetBranch(_bname) == nullptr) {
+      std::stringstream ss;
+      ss << "Branch " << _bname << " does not exist" << std::endl;
+      throw std::runtime_error(ss.str());
+    }
     auto* arr(new TTreeReaderArray<T>(*reader_, _bname));
     // TODO want to check if T is the correct type
     rItr = branchReaders_.emplace(_bname, arr).first;
@@ -63,6 +77,11 @@ multidraw::FunctionLibrary::getValue(char const* _bname)
 {
   auto rItr(branchReaders_.find(_bname));
   if (rItr == branchReaders_.end()) {
+    if (reader_->GetTree()->GetBranch(_bname) == nullptr) {
+      std::stringstream ss;
+      ss << "Branch " << _bname << " does not exist" << std::endl;
+      throw std::runtime_error(ss.str());
+    }
     auto* val(new TTreeReaderValue<T>(*reader_, _bname));
     rItr = branchReaders_.emplace(_bname, val).first; 
   }
@@ -73,6 +92,20 @@ multidraw::FunctionLibrary::getValue(char const* _bname)
   }
 
   return *static_cast<TTreeReaderValue<T>*>(rItr->second.get());
+}
+
+template<class T>
+void
+multidraw::FunctionLibrary::bindBranch(TTreeReaderValue<T>*& _reader, char const* _bname)
+{
+  _reader = &getValue<T>(_bname);
+}
+
+template<class T>
+void
+multidraw::FunctionLibrary::bindBranch(TTreeReaderArray<T>*& _reader, char const* _bname)
+{
+  _reader = &getArray<T>(_bname);
 }
 
 typedef TTreeReaderArray<Float_t> FloatArrayReader;

@@ -85,6 +85,9 @@ namespace multidraw {
     //! Add a new alias, computed as a function of other branches
     void addAlias(char const* name, char const* expr);
 
+    //! Add a new alias, computed as a function of other branches
+    void addAlias(char const* name, TTreeFunction const& func);
+
     //! Backward compatibility
     void addVariable(char const* name, char const* expr) { addAlias(name, expr); }
 
@@ -133,6 +136,14 @@ namespace multidraw {
      * of the global one.
      */
     void setTreeReweight(int treeNumber, bool exclusive, const char* expr, TObject const* source = nullptr);
+
+    //! Set an overall reweight to specific trees
+    /*!
+     * When exclusive = true, the global reweight is not applied to the events
+     * from the given tree number. If exclusive = false, the tree-by-tree weight is applied on top
+     * of the global one.
+     */
+    void setTreeReweight(int treeNumber, bool exclusive, ReweightSource const&);
 
     //! Set a prescale factor
     /*!
@@ -250,7 +261,7 @@ namespace multidraw {
 
     CutPtr filter_{};
     std::map<TString, CutPtr> cuts_{};
-    std::vector<std::pair<TString, TString>> aliases_{};
+    std::vector<std::pair<TString, CompiledExprSource>> aliases_{};
 
     double globalWeight_{1.};
     ReweightSourcePtr globalReweightSource_{};

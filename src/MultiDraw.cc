@@ -98,9 +98,18 @@ void
 multidraw::MultiDraw::addAlias(char const* _name, char const* _expr)
 {
   if (_name == nullptr || std::strlen(_name) == 0)
-    throw std::invalid_argument("Cannot add a alias with no name");
+    throw std::invalid_argument("Cannot add an alias with no name");
 
-  aliases_.emplace_back(_name, _expr);
+  aliases_.emplace_back(_name, CompiledExprSource(_expr));
+}
+
+void
+multidraw::MultiDraw::addAlias(char const* _name, TTreeFunction const& _func)
+{
+  if (_name == nullptr || std::strlen(_name) == 0)
+    throw std::invalid_argument("Cannot add an alias with no name");
+
+  aliases_.emplace_back(_name, CompiledExprSource(_func));
 }
 
 void
@@ -140,6 +149,14 @@ multidraw::MultiDraw::setTreeReweight(int _treeNumber, bool _exclusive, char con
 {
   auto& source(treeReweightSources_[_treeNumber]);
   source.first = std::make_unique<ReweightSource>(_expr, _source);
+  source.second = _exclusive;
+}
+
+void
+multidraw::MultiDraw::setTreeReweight(int _treeNumber, bool _exclusive, ReweightSource const& _reweight)
+{
+  auto& source(treeReweightSources_[_treeNumber]);
+  source.first = std::make_unique<ReweightSource>(_reweight);
   source.second = _exclusive;
 }
 
@@ -643,6 +660,14 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     doTimeProfile = doTimeProfile_;
   }
 
+  if (_tree.GetNtrees() == 0) {
+    // TTreeFormula compilation crashes if there is no tree in the chain
+    if (printLevel >= 0)
+      std::cout << "Input tree is empty." << std::endl;
+
+    return 0;
+  }
+
   currentTree = &_tree;
 
   // Create the repository of all TTreeFormulas
@@ -656,7 +681,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     TBranch* vbranch{nullptr};
     unsigned nD{0};
     std::vector<double> values{};
-    TTreeFormulaCached* sourceFormula{};
+    std::unique_ptr<CompiledExpr> sourceExpr{};
   };
 
   std::unique_ptr<TTree> aliasesTree(nullptr);
@@ -680,28 +705,35 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     // Adding aliases in given order - aliases dependent on others must be declared in order
     for (auto& v : aliases_) {
       auto& name(v.first);
-      auto& expr(v.second);
+      auto& exprSource(v.second);
 
       if (_tree.GetBranch(name) != nullptr)
         throw std::runtime_error(("Branch with name " + name + " already exists in the input tree. Cannot define alias.").Data());
 
-      TTreeFormulaCached& formula(library.getFormula(expr));
-
       aliases.resize(aliases.size() + 1);
       auto& varspec(aliases.back());
 
-      varspec.sourceFormula = &formula;
+      varspec.sourceExpr = std::move(exprSource.compile(library, flibrary));
 
-      auto* formulaManager(formula.GetManager());
-      formulaManager->Sync();
+      int multiplicity(0);
 
-      if (formulaManager->GetMultiplicity() == 0) {
+      if (varspec.sourceExpr->getFormula() != nullptr) {
+        auto* formula(varspec.sourceExpr->getFormula());
+        auto* formulaManager(formula->GetManager());
+        formulaManager->Sync();
+
+        multiplicity = formulaManager->GetMultiplicity();
+      }
+      else
+        multiplicity = varspec.sourceExpr->getFunction()->getMultiplicity();
+
+      if (multiplicity == 0) {
         // singlet branch
         varspec.values.resize(1);
         varspec.vbranch = aliasesTree->Branch(name, varspec.values.data(), name + "/D");
       }
       else {
-        if (formulaManager->GetMultiplicity() < 0)
+        if (multiplicity < 0)
           negativeMultiplicity.push_back(name);
 
         // multiplicity > 0 or -1 -> number of values may change (case -1: either 0 or 1)
@@ -1045,8 +1077,8 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
 
       for (auto& v : aliases) {
         if (v.nbranch == nullptr) {
-          v.sourceFormula->GetNdata();
-          v.values[0] = v.sourceFormula->EvalInstance(0);
+          v.sourceExpr->getNdata();
+          v.values[0] = v.sourceExpr->evaluate(0);
 
           if (printLevel > 3)
             std::cout << "        Alias " << v.vbranch->GetName() << ": static value " << v.values[0] << std::endl;
@@ -1055,7 +1087,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
         }
         else {
           auto* currentData(v.values.data());
-          v.nD = v.sourceFormula->GetNdata();
+          v.nD = v.sourceExpr->getNdata();
           v.values.resize(v.nD);
 
           if (v.values.data() != currentData) {
@@ -1064,7 +1096,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
           }
 
           for (unsigned iD(0); iD != v.nD; ++iD)
-            v.values[iD] = v.sourceFormula->EvalInstance(iD);
+            v.values[iD] = v.sourceExpr->evaluate(iD);
 
           if (printLevel > 3) {
             std::cout << "        Alias " << v.vbranch->GetName() << ": dynamic size " << v.nD;
@@ -1179,6 +1211,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
   if (printLevel >= 0 && doTimeProfile) {
     double totalTime(millisec(ioTimer) + millisec(eventTimer));
     totalTime += millisec(std::accumulate(cutTimers.begin(), cutTimers.end(), SteadyClock::duration::zero()));
+    std::cout << std::endl;
     std::cout << " Execution time: " << (totalTime / iEntry) << " ms/evt" << std::endl;
 
     std::cout << "        Time spent on tree input: " << (millisec(ioTimer) / iEntry) << " ms/evt" << std::endl;

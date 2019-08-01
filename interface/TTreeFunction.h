@@ -18,7 +18,8 @@ namespace multidraw {
     std::unique_ptr<TTreeFunction> linkedCopy(FunctionLibrary&) const;
 
     bool isLinked() const { return linked_; }
-  
+
+    virtual int getMultiplicity() { return 0; }
     virtual unsigned getNdata() = 0;
     virtual double evaluate(unsigned) = 0;
 
