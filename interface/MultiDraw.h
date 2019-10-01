@@ -163,18 +163,21 @@ namespace multidraw {
 
     Plot2DFiller& addPlot2D(TH2* hist, TTreeFunction const& xfunc, TTreeFunction const& yfunc, char const* cutName = "", char const* reweight = "");
 
-    //! Add a 1D histogram to fill by a category group.
+    //! Add 1D histograms to fill by a category group.
     Plot1DFiller& addPlotList(TObjArray* histlist, char const* expr, char const* cutName, char const* reweight = "", Plot1DFiller::OverflowMode mode = Plot1DFiller::kDefault);
 
     Plot1DFiller& addPlotList(TObjArray* histlist, TTreeFunction const& func, char const* cutName, char const* reweight = "", Plot1DFiller::OverflowMode mode = Plot1DFiller::kDefault);
 
-    //! Add a 2D histogram to fill by a category group.
+    //! Add 2D histograms to fill by a category group.
     Plot2DFiller& addPlotList2D(TObjArray* histlist, char const* xexpr, char const* yexpr, char const* cutName, char const* reweight = "");
 
     Plot2DFiller& addPlotList2D(TObjArray* histlist, TTreeFunction const& xexpr, TTreeFunction const& yexpr, char const* cutName, char const* reweight = "");
     
     //! Add a tree to fill.
     TreeFiller& addTree(TTree* tree, char const* cutName = "", char const* reweight = "");
+
+    //! Add trees to fill by a category group.
+    TreeFiller& addTreeList(TObjArray* treelist, char const* cutName = "", char const* reweight = "");
 
     //! Run and fill the plots and trees.
     void execute(long nEntries = -1, unsigned long firstEntry = 0);

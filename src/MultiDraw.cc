@@ -237,6 +237,30 @@ multidraw::MultiDraw::addTree(TTree* _tree, char const* _cutName/* = ""*/, char 
   return *filler;
 }
 
+multidraw::TreeFiller&
+multidraw::MultiDraw::addTreeList(TObjArray* _treelist, char const* _cutName/* = ""*/, char const* _reweight/* = ""*/)
+{
+  if (printLevel_ > 1) {
+    std::cout << "\nAdding tree list with ";
+    if (_cutName != nullptr && std::strlen(_cutName) != 0)
+      std::cout << " Cut: " << _cutName << std::endl;
+    if (_reweight != nullptr && std::strlen(_reweight) != 0)
+      std::cout << " Reweight: " << _reweight << std::endl;
+  }
+
+  auto& cut(findCut_(_cutName));
+
+  int ncat(cut.getNCategories());
+  if (ncat != -1 && ncat !=_treelist->GetEntries())
+    throw std::runtime_error("Size of tree list does not match the number of categories");
+
+  auto* filler(new TreeFiller(*_treelist, _reweight));
+
+  cut.addFiller(std::unique_ptr<ExprFiller>(filler));
+
+  return *filler;
+}
+
 multidraw::Cut&
 multidraw::MultiDraw::findCut_(char const* _cutName) const
 {

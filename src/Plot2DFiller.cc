@@ -13,16 +13,14 @@ multidraw::Plot2DFiller::Plot2DFiller(TH2& _hist, CompiledExprSource const& _xso
 }
 
 multidraw::Plot2DFiller::Plot2DFiller(TObjArray& _histlist, CompiledExprSource const& _xsource, CompiledExprSource const& _ysource, char const* _reweight/* = ""*/) :
-  ExprFiller(_histlist, _reweight),
-  categorized_(true)
+  ExprFiller(_histlist, _reweight)
 {
   sources_.push_back(_xsource);
   sources_.push_back(_ysource);
 }
 
 multidraw::Plot2DFiller::Plot2DFiller(Plot2DFiller const& _orig) :
-  ExprFiller(_orig),
-  categorized_(_orig.categorized_)
+  ExprFiller(_orig)
 {
 }
 
@@ -32,35 +30,8 @@ multidraw::Plot2DFiller::Plot2DFiller(TH2& _hist, Plot2DFiller const& _orig) :
 }
 
 multidraw::Plot2DFiller::Plot2DFiller(TObjArray& _histlist, Plot2DFiller const& _orig) :
-  ExprFiller(_histlist, _orig),
-  categorized_(true)
+  ExprFiller(_histlist, _orig)
 {
-}
-
-TH2 const&
-multidraw::Plot2DFiller::getHist(int _icat/* = -1*/) const
-{
-  if (categorized_) {
-    auto& array(static_cast<TObjArray&>(tobj_));
-    if (_icat >= array.GetEntriesFast())
-      throw std::runtime_error(TString::Format("Category index out of bounds: index %d >= maximum %d", _icat, array.GetEntriesFast()).Data());
-    return static_cast<TH2&>(*array.UncheckedAt(_icat));
-  }
-  else
-    return static_cast<TH2&>(tobj_);
-}
-
-TH2&
-multidraw::Plot2DFiller::getHist(int _icat/* = -1*/)
-{
-  if (categorized_) {
-    auto& array(static_cast<TObjArray&>(tobj_));
-    if (_icat >= array.GetEntriesFast())
-      throw std::runtime_error(TString::Format("Category index out of bounds: index %d >= maximum %d", _icat, array.GetEntriesFast()).Data());
-    return static_cast<TH2&>(*array.UncheckedAt(_icat));
-  }
-  else
-    return static_cast<TH2&>(tobj_);
 }
 
 void

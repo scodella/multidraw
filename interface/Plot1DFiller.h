@@ -32,8 +32,8 @@ namespace multidraw {
     Plot1DFiller(Plot1DFiller const&);
     ~Plot1DFiller() {}
 
-    TH1 const& getHist(int icat = -1) const;
-    TH1& getHist(int icat = -1);
+    TH1 const& getHist(int icat = -1) const { return static_cast<TH1 const&>(getObj(icat)); }
+    TH1& getHist(int icat = -1) { return static_cast<TH1&>(getObj(icat)); }
 
     unsigned getNdim() const override { return 1; }
 
@@ -46,7 +46,6 @@ namespace multidraw {
     void mergeBack_() override;
 
     OverflowMode overflowMode_{kDefault};
-    bool categorized_{false};
   };
 
 }

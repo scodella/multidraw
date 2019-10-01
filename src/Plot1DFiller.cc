@@ -14,16 +14,14 @@ multidraw::Plot1DFiller::Plot1DFiller(TH1& _hist, CompiledExprSource const& _sou
 
 multidraw::Plot1DFiller::Plot1DFiller(TObjArray& _histlist, CompiledExprSource const& _source, char const* _reweight/* = ""*/, Plot1DFiller::OverflowMode _mode/* = kDefault*/) :
   ExprFiller(_histlist, _reweight),
-  overflowMode_(_mode),
-  categorized_(true)
+  overflowMode_(_mode)
 {
   sources_.push_back(_source);
 }
 
 multidraw::Plot1DFiller::Plot1DFiller(Plot1DFiller const& _orig) :
   ExprFiller(_orig),
-  overflowMode_(_orig.overflowMode_),
-  categorized_(_orig.categorized_)
+  overflowMode_(_orig.overflowMode_)
 {
 }
 
@@ -35,35 +33,8 @@ multidraw::Plot1DFiller::Plot1DFiller(TH1& _hist, Plot1DFiller const& _orig) :
 
 multidraw::Plot1DFiller::Plot1DFiller(TObjArray& _histlist, Plot1DFiller const& _orig) :
   ExprFiller(_histlist, _orig),
-  overflowMode_(_orig.overflowMode_),
-  categorized_(true)
+  overflowMode_(_orig.overflowMode_)
 {
-}
-
-TH1 const&
-multidraw::Plot1DFiller::getHist(int _icat/* = -1*/) const
-{
-  if (categorized_) {
-    auto& array(static_cast<TObjArray&>(tobj_));
-    if (_icat >= array.GetEntriesFast())
-      throw std::runtime_error(TString::Format("Category index out of bounds: index %d >= maximum %d", _icat, array.GetEntriesFast()).Data());
-    return static_cast<TH1&>(*array.UncheckedAt(_icat));
-  }
-  else
-    return static_cast<TH1&>(tobj_);
-}
-
-TH1&
-multidraw::Plot1DFiller::getHist(int _icat/* = -1*/)
-{
-  if (categorized_) {
-    auto& array(static_cast<TObjArray&>(tobj_));
-    if (_icat >= array.GetEntriesFast())
-      throw std::runtime_error(TString::Format("Category index out of bounds: index %d >= maximum %d", _icat, array.GetEntriesFast()).Data());
-    return static_cast<TH1&>(*array.UncheckedAt(_icat));
-  }
-  else
-    return static_cast<TH1&>(tobj_);
 }
 
 void
@@ -98,7 +69,7 @@ multidraw::Plot1DFiller::clone_()
   if (categorized_) {
     auto& myArray(static_cast<TObjArray&>(tobj_));
 
-    // this array will be deleted in the clone ctor
+    // this array will be deleted in the clone dtor
     auto* array(new TObjArray());
     array->SetOwner(true);
 

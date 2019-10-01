@@ -11,12 +11,16 @@ multidraw::ExprFiller::ExprFiller(TObject& _tobj, char const* _reweight/* = ""*/
 {
   if (_reweight != nullptr && std::strlen(_reweight) != 0)
     reweightSource_ = std::make_unique<ReweightSource>(_reweight);
+
+  if (_tobj.IsA() == TObjArray::Class())
+    categorized_ = true;
 }
 
 multidraw::ExprFiller::ExprFiller(ExprFiller const& _orig) :
   tobj_(_orig.tobj_),
   sources_(_orig.sources_),
-  printLevel_(_orig.printLevel_)
+  printLevel_(_orig.printLevel_),
+  categorized_(_orig.categorized_)
 {
   if (_orig.reweightSource_)
     reweightSource_ = std::make_unique<ReweightSource>(*_orig.reweightSource_);
@@ -25,7 +29,8 @@ multidraw::ExprFiller::ExprFiller(ExprFiller const& _orig) :
 multidraw::ExprFiller::ExprFiller(TObject& _tobj, ExprFiller const& _orig) :
   tobj_(_tobj),
   sources_(_orig.sources_),
-  printLevel_(_orig.printLevel_)
+  printLevel_(_orig.printLevel_),
+  categorized_(_orig.categorized_)
 {
   if (_orig.reweightSource_)
     reweightSource_ = std::make_unique<ReweightSource>(*_orig.reweightSource_);
@@ -37,6 +42,32 @@ multidraw::ExprFiller::~ExprFiller()
 
   if (cloneSource_ != nullptr)
     delete &tobj_;
+}
+
+TObject const&
+multidraw::ExprFiller::getObj(int _icat/* = -1*/) const
+{
+  if (categorized_) {
+    auto& array(static_cast<TObjArray const&>(tobj_));
+    if (_icat >= array.GetEntriesFast())
+      throw std::runtime_error(TString::Format("Category index out of bounds: index %d >= maximum %d", _icat, array.GetEntriesFast()).Data());
+    return *array.UncheckedAt(_icat);
+  }
+  else
+    return tobj_;
+}
+
+TObject&
+multidraw::ExprFiller::getObj(int _icat/* = -1*/)
+{
+  if (categorized_) {
+    auto& array(static_cast<TObjArray&>(tobj_));
+    if (_icat >= array.GetEntriesFast())
+      throw std::runtime_error(TString::Format("Category index out of bounds: index %d >= maximum %d", _icat, array.GetEntriesFast()).Data());
+    return *array.UncheckedAt(_icat);
+  }
+  else
+    return tobj_;
 }
 
 void

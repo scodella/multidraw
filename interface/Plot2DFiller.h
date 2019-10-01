@@ -24,8 +24,8 @@ namespace multidraw {
     Plot2DFiller(Plot2DFiller const&);
     ~Plot2DFiller() {}
 
-    TH2 const& getHist(int icat = -1) const;
-    TH2& getHist(int icat = -1);
+    TH2 const& getHist(int icat = -1) const { return static_cast<TH2 const&>(getObj(icat)); }
+    TH2& getHist(int icat = -1) { return static_cast<TH2&>(getObj(icat)); }
 
     unsigned getNdim() const override { return 2; }
 
@@ -36,8 +36,6 @@ namespace multidraw {
     void doFill_(unsigned, int icat = -1) override;
     ExprFiller* clone_() override;
     void mergeBack_() override;
-
-    bool categorized_{false};
   };
 
 }

@@ -18,12 +18,14 @@ namespace multidraw {
   class TreeFiller : public ExprFiller {
   public:
     TreeFiller(TTree& tree, char const* reweight = "");
+    TreeFiller(TObjArray& treelist, char const* reweight = "");
     TreeFiller(TreeFiller const&);
     ~TreeFiller();
 
     void addBranch(char const* bname, char const* expr, bool rebind = false);
 
-    TTree const& getTree() const { return static_cast<TTree&>(tobj_); }
+    TTree const& getTree(int icat = -1) const { return static_cast<TTree const&>(getObj(icat)); }
+    TTree& getTree(int icat = -1) { return static_cast<TTree&>(getObj(icat)); }
 
     unsigned getNdim() const override { return bvalues_.size(); }
 
@@ -31,8 +33,9 @@ namespace multidraw {
 
   private:
     TreeFiller(TTree& tree, TreeFiller const&);
+    TreeFiller(TObjArray& treelist, TreeFiller const&);
 
-    void doFill_(unsigned, int = -1) override;
+    void doFill_(unsigned, int icat = -1) override;
     ExprFiller* clone_() override;
     void mergeBack_() override;
 

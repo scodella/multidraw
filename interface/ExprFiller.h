@@ -27,8 +27,8 @@ namespace multidraw {
 
     void setPrintLevel(int l) { printLevel_ = l; }
 
-    TObject const& getObj() const { return tobj_; }
-    TObject& getObj() { return tobj_; }
+    TObject const& getObj(int icat = -1) const;
+    TObject& getObj(int icat = -1);
 
     virtual unsigned getNdim() const = 0;
     TTreeFormulaCached* getFormula(unsigned i = 0) const { return compiledExprs_.at(i)->getFormula(); }
@@ -69,6 +69,8 @@ namespace multidraw {
 
     std::vector<CompiledExprPtr> compiledExprs_{};
     ReweightPtr compiledReweight_{nullptr};
+
+    bool categorized_{false};
   };
 
   typedef std::unique_ptr<ExprFiller> ExprFillerPtr;
