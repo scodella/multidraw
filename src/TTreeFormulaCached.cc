@@ -1,6 +1,9 @@
 #include "../interface/TTreeFormulaCached.h"
 
 #include "TError.h"
+#include "TCutG.h"
+#include "TTree.h"
+#include "TNamed.h"
 
 ClassImp(TTreeFormulaCached)
 
@@ -10,6 +13,47 @@ TTreeFormulaCached::TTreeFormulaCached(char const* _name, char const* _formula, 
 {
   if (!fCache)
     fCache.reset(new Cache);
+
+  // replace subformulas with TTreeFormulaCached
+  for (Int_t j=0; j<kMAXCODES; j++) {
+    if (fLookupType[j]==kDataMember || fLookupType[j]==kTreeMember)
+      throw std::runtime_error("Parsing of object branches not supported yet");
+    
+    for (Int_t k = 0; k<kMAXFORMDIM; k++) {
+      if (fVarIndexes[j][k]) {
+        auto* tmp{fVarIndexes[j][k]};
+        fVarIndexes[j][k] = new TTreeFormulaCached(tmp->GetName(), tmp->GetTitle(), tmp->GetTree());
+        delete tmp;
+      }
+    }
+
+    if (j<fNval && fCodes[j]<0) {
+      if (fExternalCuts.At(j)) {
+        auto* gcut{static_cast<TCutG*>(fExternalCuts.At(j))};
+        if (gcut->GetObjectX()) {
+          auto* fx{static_cast<TTreeFormula*>(gcut->GetObjectX())};
+          gcut->SetObjectX(new TTreeFormulaCached(fx->GetName(), fx->GetTitle(), fx->GetTree()));
+        }
+        if (gcut->GetObjectY()) {
+          auto* fy{static_cast<TTreeFormula*>(gcut->GetObjectY())};
+          gcut->SetObjectY(new TTreeFormulaCached(fy->GetName(), fy->GetTitle(), fy->GetTree()));
+        }
+      }
+    }
+  }
+
+  for(Int_t k=0;k<fNoper;k++) {
+    if (fAliases[k]) {
+      auto* subform{static_cast<TTreeFormula*>(fAliases.UncheckedAt(k))};
+      fAliases[k] = new TTreeFormulaCached(subform->GetName(), subform->GetTitle(), subform->GetTree());
+      delete subform;
+    }
+  }
+}
+
+TTreeFormulaCached::TTreeFormulaCached(char const* _name, char const* _formula, TTree* _tree) :
+  TTreeFormula(_name, _formula, _tree)
+{
 }
 
 Int_t
@@ -17,7 +61,7 @@ TTreeFormulaCached::GetNdata()
 {
   Int_t ndata(TTreeFormula::GetNdata());
 
-  if (fCache->fValues.empty())
+  if (fCache && fCache->fValues.empty())
     fCache->fValues.assign(ndata, std::pair<Bool_t, Double_t>(false, 0.));
 
   return ndata;
@@ -26,19 +70,110 @@ TTreeFormulaCached::GetNdata()
 Double_t
 TTreeFormulaCached::EvalInstance(Int_t _i, char const* _stringStack[]/* = nullptr*/)
 {
-  if (_i >= int(fCache->fValues.size())) {
-    if (fCache->fValues.size() == 0)
-      return 0.;
-    else
-      return EvalInstance(fCache->fValues.size() - 1, _stringStack);
+  if (fCache) {
+    if (_i >= int(fCache->fValues.size())) {
+      if (fCache->fValues.size() == 0)
+        return 0.;
+      else
+        return EvalInstance(fCache->fValues.size() - 1, _stringStack);
+    }
+
+    if (!fCache->fValues[_i].first) {
+      fCache->fValues[_i].first = true;
+      fCache->fValues[_i].second = TTreeFormula::EvalInstance(_i, _stringStack);
+    }
+
+    return fCache->fValues[_i].second;
+  }
+  else
+    return TTreeFormula::EvalInstance(_i, _stringStack);
+}
+
+bool
+TTreeFormulaCached::ReplaceLeaf(TString const& _from, TString const& _to)
+{
+  bool replaced{false};
+  
+  Int_t nleaves = fLeafNames.GetEntriesFast();
+  ResetBit( kMissingLeaf );
+  for (Int_t i=0;i<nleaves;i++) {
+    if (!fTree) break;
+    if (!fLeafNames[i]) continue;
+
+    if (fLeafNames[i]->GetName() != _from || fLeafNames[i]->GetTitle() != _from)
+      continue;
+
+    replaced = true;
+
+    delete fLeafNames[i];
+    fLeafNames[i] = new TNamed(_to, _to);
+
+    TLeaf *leaf = fTree->GetLeaf(fLeafNames[i]->GetTitle(),fLeafNames[i]->GetName());
+    fLeaves[i] = leaf;
+    if (fBranches[i] && leaf) {
+      fBranches[i] = leaf->GetBranch();
+      ((TBranch*)fBranches[i])->ResetReadEntry();
+    }
+    if (leaf==0) SetBit( kMissingLeaf );
   }
 
-  if (!fCache->fValues[_i].first) {
-    fCache->fValues[_i].first = true;
-    fCache->fValues[_i].second = TTreeFormula::EvalInstance(_i, _stringStack);
+  for (Int_t j=0; j<kMAXCODES; j++) {
+    for (Int_t k = 0; k<kMAXFORMDIM; k++) {
+      if (fVarIndexes[j][k]) {
+        replaced = replaced || static_cast<TTreeFormulaCached*>(fVarIndexes[j][k])->ReplaceLeaf(_from, _to);
+      }
+    }
+    if (j<fNval && fCodes[j]<0) {
+      TCutG *gcut = (TCutG*)fExternalCuts.At(j);
+      if (gcut) {
+        auto* fx = static_cast<TTreeFormulaCached*>(gcut->GetObjectX());
+        auto* fy = static_cast<TTreeFormulaCached*>(gcut->GetObjectY());
+        if (fx) {
+          replaced = replaced || fx->ReplaceLeaf(_from, _to);
+        }
+        if (fy) {
+          replaced = replaced || fy->ReplaceLeaf(_from, _to);
+        }
+      }
+    }
+  }
+  for(Int_t k=0;k<fNoper;k++) {
+    const Int_t oper = GetOper()[k];
+    switch(oper >> kTFOperShift) {
+    case kAlias:
+    case kAliasString:
+    case kAlternate:
+    case kAlternateString:
+    case kMinIf:
+    case kMaxIf:
+      {
+        auto* subform = static_cast<TTreeFormulaCached*>(fAliases.UncheckedAt(k));
+        replaced = replaced || subform->ReplaceLeaf(_from, _to);
+        break;
+      }
+    case kDefinedVariable:
+      {
+        Int_t code = GetActionParam(k);
+        if (fCodes[code]==0) switch(fLookupType[code]) {
+          case kLengthFunc:
+          case kSum:
+          case kMin:
+          case kMax:
+            {
+              auto* subform = static_cast<TTreeFormulaCached*>(fAliases.UncheckedAt(k));
+              replaced = replaced || subform->ReplaceLeaf(_from, _to);
+              break;
+            }
+          default:
+            break;
+          }
+      }
+    default:
+      break;
+    }
   }
 
-  return fCache->fValues[_i].second;
+  return replaced;
 }
 
 struct ErrorHandlerReport {

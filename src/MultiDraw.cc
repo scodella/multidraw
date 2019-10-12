@@ -892,6 +892,10 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
     }
   }
 
+  // Replace branches in the expressions
+  for (auto& repl : branchReplacements_)
+    library.replaceAll(repl.first, repl.second);
+
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
   Long64_t* treeOffsets(nullptr);
 
@@ -923,7 +927,7 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
 
   if (printLevel >= 0)
     (std::cout << "      0 events").flush();
-  
+
   while (iEntry != nEntries) {
     if (doTimeProfile)
       start = SteadyClock::now();

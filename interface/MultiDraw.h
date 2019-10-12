@@ -179,6 +179,9 @@ namespace multidraw {
     //! Add trees to fill by a category group.
     TreeFiller& addTreeList(TObjArray* treelist, char const* cutName = "", char const* reweight = "");
 
+    //! Replace a branch appearing in all compiled expressions with another.
+    void replaceBranch(char const* from, char const* to) { branchReplacements_.emplace_back(from, to); }
+
     //! Run and fill the plots and trees.
     void execute(long nEntries = -1, unsigned long firstEntry = 0);
 
@@ -270,6 +273,8 @@ namespace multidraw {
     ReweightSourcePtr globalReweightSource_{};
     std::map<unsigned, std::pair<double, bool>> treeWeights_{};
     std::map<unsigned, std::pair<ReweightSourcePtr, bool>> treeReweightSources_{};
+
+    std::vector<std::pair<TString, TString>> branchReplacements_{};
 
     int printLevel_{0};
     bool doTimeProfile_{false};

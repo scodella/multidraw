@@ -51,3 +51,14 @@ multidraw::FormulaLibrary::resetCache()
   for (auto& ec : caches_)
     ec.second->fValues.clear();
 }
+
+void
+multidraw::FormulaLibrary::replaceAll(char const* _from, char const* _to)
+{
+  bool replaced{false};
+  for (auto& formula : formulas_)
+    replaced = replaced || formula->ReplaceLeaf(_from, _to);
+
+  if (replaced)
+    resetCache();
+}

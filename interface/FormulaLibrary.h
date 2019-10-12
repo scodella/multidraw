@@ -29,6 +29,8 @@ namespace multidraw {
     void updateFormulaLeaves();
     void resetCache();
 
+    void replaceAll(char const* from, char const* to);
+
     unsigned size() const { return formulas_.size(); }
 
   private:

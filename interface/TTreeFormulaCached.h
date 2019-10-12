@@ -21,7 +21,8 @@ public:
 
   typedef std::shared_ptr<Cache> CachePtr;
 
-  TTreeFormulaCached(char const* name, char const* formula, TTree* tree, CachePtr const& = nullptr);
+  TTreeFormulaCached(char const* name, char const* formula, TTree* tree, CachePtr const&);
+  TTreeFormulaCached(char const* name, char const* formula, TTree* tree);
   TTreeFormulaCached(TTreeFormulaCached const&);
   ~TTreeFormulaCached() {}
 
@@ -34,8 +35,10 @@ public:
 
   TObjArray const* GetListOfLeaves() const { return &fLeaves; }
 
+  bool ReplaceLeaf(TString const& from, TString const& to);
+
 private:
-  CachePtr fCache;
+  CachePtr fCache{};
 
   ClassDef(TTreeFormulaCached, 1)
 };
