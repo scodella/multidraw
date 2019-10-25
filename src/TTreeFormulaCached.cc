@@ -43,6 +43,8 @@ TTreeFormulaCached::TTreeFormulaCached(char const* _name, char const* _formula, 
   }
 
   for(Int_t k=0;k<fNoper;k++) {
+    if (k >= fAliases.GetEntries())
+      break;
     if (fAliases[k]) {
       auto* subform{static_cast<TTreeFormula*>(fAliases.UncheckedAt(k))};
       fAliases[k] = new TTreeFormulaCached(subform->GetName(), subform->GetTitle(), subform->GetTree());

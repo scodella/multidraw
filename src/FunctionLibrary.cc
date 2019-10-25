@@ -23,3 +23,13 @@ multidraw::FunctionLibrary::getFunction(TTreeFunction const& _source)
 
   return *fItr->second.get();
 }
+
+void
+multidraw::FunctionLibrary::replaceAll(char const* _from, char const* _to)
+{
+  auto fItr(branchReaders_.find(_from));
+  if (fItr == branchReaders_.end())
+    return;
+
+  fItr->second->replace(*reader_, _to);
+}

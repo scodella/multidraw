@@ -893,8 +893,10 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
   }
 
   // Replace branches in the expressions
-  for (auto& repl : branchReplacements_)
+  for (auto& repl : branchReplacements_) {
     library.replaceAll(repl.first, repl.second);
+    flibrary.replaceAll(repl.first, repl.second);
+  }
 
 #if ROOT_VERSION_CODE < ROOT_VERSION(6,12,0)
   Long64_t* treeOffsets(nullptr);
