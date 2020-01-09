@@ -13,6 +13,7 @@
 #include "TLeafL.h"
 #include "TEntryList.h"
 #include "TTreeFormulaManager.h"
+#include "TChainElement.h"
 
 #include <stdexcept>
 #include <cstring>
@@ -25,9 +26,42 @@
 #include <unordered_map>
 
 multidraw::MultiDraw::MultiDraw(char const* _treeName/* = "events"*/) :
-  treeName_(_treeName),
+  treeName_{_treeName},
   filter_(new Cut(""))
 {
+}
+
+multidraw::MultiDraw::MultiDraw(MultiDraw const& _orig) :
+  treeName_{_orig.treeName_},
+  inputPaths_{_orig.inputPaths_},
+  entryList_{_orig.entryList_},
+  goodRunBranch_{_orig.goodRunBranch_},
+  goodRuns_{_orig.goodRuns_},
+  weightBranchName_{_orig.weightBranchName_},
+  evtNumBranchName_{_orig.evtNumBranchName_},
+  inputMultiplexing_{_orig.inputMultiplexing_},
+  prescale_{_orig.prescale_},
+  filter_(new Cut("", _orig.filter_->getCutExpr())),
+  aliases_{_orig.aliases_},
+  globalWeight_{_orig.globalWeight_},
+  treeWeights_{_orig.treeWeights_},
+  branchReplacements_{_orig.branchReplacements_},
+  printLevel_{_orig.printLevel_},
+  doTimeProfile_{_orig.doTimeProfile_},
+  doAbortOnReadError_{_orig.doAbortOnReadError_},
+  totalEvents_{_orig.totalEvents_}
+{
+  for (auto const& treePtr : _orig.friendTrees_)
+    addFriend(treePtr->GetName(), treePtr->GetListOfFiles());
+
+  for (auto const& cut : _orig.cuts_)
+    addCut(cut.first, cut.second->getCutExpr());
+
+  if (_orig.globalReweightSource_)
+    globalReweightSource_ = std::make_unique<ReweightSource>(*_orig.globalReweightSource_);
+
+  for (auto const& source : _orig.treeReweightSources_)
+    setTreeReweight(source.first, source.second.second, *source.second.first);
 }
 
 multidraw::MultiDraw::~MultiDraw()
@@ -39,8 +73,12 @@ multidraw::MultiDraw::addFriend(char const* _treeName, TObjArray const* _paths)
 {
   friendTrees_.emplace_back(new TChain(_treeName));
   auto& chain(friendTrees_.back());
-  for (auto* path : *_paths)
-    chain->Add(path->GetName());
+  for (auto* path : *_paths) {
+    if (path->InheritsFrom(TChainElement::Class()))
+      chain->Add(path->GetTitle());
+    else
+      chain->Add(path->GetName());
+  }
 }
 
 void
@@ -259,6 +297,16 @@ multidraw::MultiDraw::addTreeList(TObjArray* _treelist, char const* _cutName/* =
   cut.addFiller(std::unique_ptr<ExprFiller>(filler));
 
   return *filler;
+}
+
+void
+multidraw::MultiDraw::resetReplaceBranch(char const* original)
+{
+  auto itr{std::find_if(branchReplacements_.begin(), branchReplacements_.end(), [original](auto& bnames)->bool { return bnames.first == original; })};
+  if (itr == branchReplacements_.end())
+    std::cerr << "Branch " << original << " was not replaced. Doing nothing." << std::endl;
+  else
+    branchReplacements_.erase(itr);
 }
 
 multidraw::Cut&

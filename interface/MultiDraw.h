@@ -14,11 +14,13 @@
 #include "TString.h"
 
 #include <vector>
+#include <list>
 #include <thread>
 #include <mutex>
 #include <condition_variable>
 #include <atomic>
 #include <tuple>
+#include <array>
 
 namespace multidraw {
 
@@ -47,7 +49,16 @@ namespace multidraw {
      * \param treeName  Name of the input tree.
      */
     MultiDraw(char const* treeName = "events");
+
+    //! Copy constructor.
+    /*!
+     * All cut and weight expressions are copied, but no histograms / trees are.
+     */
+    MultiDraw(MultiDraw const&);
     ~MultiDraw();
+
+    //! Cloning for PyROOT
+    MultiDraw* clone() { return new MultiDraw(*this); }
 
     //! Set the tree name.
     void setTreeName(char const* name) { treeName_ = name; }
@@ -182,6 +193,9 @@ namespace multidraw {
     //! Replace a branch appearing in all compiled expressions with another.
     void replaceBranch(char const* from, char const* to) { branchReplacements_.emplace_back(from, to); }
 
+    //! Reset the branch replacement
+    void resetReplaceBranch(char const* original);
+
     //! Run and fill the plots and trees.
     void execute(long nEntries = -1, unsigned long firstEntry = 0);
 
@@ -256,7 +270,7 @@ namespace multidraw {
 
     TEntryList* entryList_{nullptr};
 
-    TString goodRunBranch_[2]{};
+    std::array<TString, 2> goodRunBranch_{};
     std::map<unsigned, std::set<unsigned>> goodRuns_{};
 
     TString weightBranchName_{"weight"};
@@ -274,7 +288,7 @@ namespace multidraw {
     std::map<unsigned, std::pair<double, bool>> treeWeights_{};
     std::map<unsigned, std::pair<ReweightSourcePtr, bool>> treeReweightSources_{};
 
-    std::vector<std::pair<TString, TString>> branchReplacements_{};
+    std::list<std::pair<TString, TString>> branchReplacements_{};
 
     int printLevel_{0};
     bool doTimeProfile_{false};
