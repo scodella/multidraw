@@ -56,8 +56,10 @@ void
 multidraw::FormulaLibrary::replaceAll(char const* _from, char const* _to)
 {
   bool replaced{false};
-  for (auto& formula : formulas_)
-    replaced = replaced || formula->ReplaceLeaf(_from, _to);
+  for (auto& formula : formulas_) {
+    if (formula->ReplaceLeaf(_from, _to))
+      replaced = true;
+  }
 
   if (replaced)
     resetCache();

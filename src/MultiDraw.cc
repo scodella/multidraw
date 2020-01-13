@@ -51,8 +51,8 @@ multidraw::MultiDraw::MultiDraw(MultiDraw const& _orig) :
   doAbortOnReadError_{_orig.doAbortOnReadError_},
   totalEvents_{_orig.totalEvents_}
 {
-  for (auto const& treePtr : _orig.friendTrees_)
-    addFriend(treePtr->GetName(), treePtr->GetListOfFiles());
+  for (auto const& ft : _orig.friendTrees_)
+    addFriend(std::get<0>(ft), &std::get<1>(ft), std::get<2>(ft));
 
   for (auto const& cut : _orig.cuts_)
     addCut(cut.first, cut.second->getCutExpr());
@@ -69,16 +69,13 @@ multidraw::MultiDraw::~MultiDraw()
 }
 
 void
-multidraw::MultiDraw::addFriend(char const* _treeName, TObjArray const* _paths)
+multidraw::MultiDraw::addFriend(char const* _treeName, TObjArray const* _paths, char const* _alias/* = ""*/)
 {
-  friendTrees_.emplace_back(new TChain(_treeName));
-  auto& chain(friendTrees_.back());
-  for (auto* path : *_paths) {
-    if (path->InheritsFrom(TChainElement::Class()))
-      chain->Add(path->GetTitle());
-    else
-      chain->Add(path->GetName());
-  }
+  friendTrees_.emplace_back(_treeName, TObjArray(), _alias);
+  auto& ft(friendTrees_.back());
+  std::get<1>(ft).SetOwner(true);
+  for (auto* path : *_paths)
+    std::get<1>(ft).Add(path->Clone());
 }
 
 void
@@ -456,6 +453,8 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
 
   mainTree.SetEntryList(entryList_);
 
+  std::vector<std::unique_ptr<TChain>> friendTrees{};
+
   // This is not needed for single-thread execution, but using this in single-thread makes the code simpler
   SynchTools synchTools;
   synchTools.mainThread = std::this_thread::get_id();
@@ -463,8 +462,19 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
   if (inputMultiplexing_ <= 1) {
     // Single-thread execution
 
-    for (auto& frnd : friendTrees_)
-      mainTree.AddFriend(frnd.get());
+    for (auto& ft : friendTrees_) {
+      friendTrees.emplace_back(new TChain(std::get<0>(ft)));
+      auto& chain{friendTrees.back()};
+
+      for (auto* path : std::get<1>(ft)) {
+        if (path->InheritsFrom(TChainElement::Class()))
+          chain->Add(path->GetTitle());
+        else
+          chain->Add(path->GetName());
+      }
+
+      mainTree.AddFriend(chain.get(), std::get<2>(ft));
+    }
 
     totalEvents_ = executeOne_(_nEntries, _firstEntry, mainTree, synchTools);
   }
@@ -555,7 +565,7 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
       nEntriesMain = nFilesMainThread;
       byTreeMain = true;
     }
-    else{
+    else {
       // If there are only a few files or if we are limiting the entries, we need to know how many
       // events are in each file
 
@@ -668,6 +678,9 @@ multidraw::MultiDraw::execute(long _nEntries/* = -1*/, unsigned long _firstEntry
 
   if (doAbortOnReadError_)
     gErrorAbortLevel = abortLevel;
+
+  for (auto& ft : friendTrees)
+    mainTree.RemoveFriend(ft.get());
 
   if (printLevel_ >= 0) {
     std::cout << "\r      " << totalEvents_ << " events" << std::endl;

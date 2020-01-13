@@ -102,16 +102,18 @@ TTreeFormulaCached::ReplaceLeaf(TString const& _from, TString const& _to)
     if (!fTree) break;
     if (!fLeafNames[i]) continue;
 
-    if (fLeafNames[i]->GetName() != _from || fLeafNames[i]->GetTitle() != _from)
+    if (fLeafNames[i]->GetName() != _from)
       continue;
 
     replaced = true;
 
     delete fLeafNames[i];
-    fLeafNames[i] = new TNamed(_to, _to);
+    // leaf "name" = alias.leaf, leaf "title" = bare leaf name
+    fLeafNames[i] = new TNamed(_to, _to(_to.Index(".") + 1, _to.Length()));
 
     TLeaf *leaf = fTree->GetLeaf(fLeafNames[i]->GetTitle(),fLeafNames[i]->GetName());
     fLeaves[i] = leaf;
+
     if (fBranches[i] && leaf) {
       fBranches[i] = leaf->GetBranch();
       ((TBranch*)fBranches[i])->ResetReadEntry();

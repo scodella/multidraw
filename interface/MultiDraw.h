@@ -67,7 +67,7 @@ namespace multidraw {
     void addInputPath(char const* path) { inputPaths_.emplace_back(path); }
 
     //! Add a friend tree (not tested)
-    void addFriend(char const* treeName, TObjArray const* paths);
+    void addFriend(char const* treeName, TObjArray const* paths, char const* alias = "");
 
     //! Apply an entry list.
     void applyEntryList(TEntryList* elist) { entryList_ = elist; }
@@ -266,7 +266,7 @@ namespace multidraw {
     TString treeName_{"events"};
     std::vector<TString> inputPaths_{};
 
-    std::vector<std::unique_ptr<TChain>> friendTrees_{};
+    std::vector<std::tuple<TString, TObjArray, TString>> friendTrees_{};
 
     TEntryList* entryList_{nullptr};
 
