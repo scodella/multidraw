@@ -4,6 +4,7 @@
 #include "TCutG.h"
 #include "TTree.h"
 #include "TNamed.h"
+#include "TTreeFormulaManager.h"
 
 ClassImp(TTreeFormulaCached)
 
@@ -14,11 +15,25 @@ TTreeFormulaCached::TTreeFormulaCached(char const* _name, char const* _formula, 
   if (!fCache)
     fCache.reset(new Cache);
 
+  ConvertSubformulas();
+}
+
+TTreeFormulaCached::TTreeFormulaCached(char const* _name, char const* _formula, TTree* _tree) :
+  TTreeFormula(_name, _formula, _tree)
+{
+  ConvertSubformulas();
+}
+
+void
+TTreeFormulaCached::ConvertSubformulas()
+{
   // replace subformulas with TTreeFormulaCached
+
   for (Int_t j=0; j<kMAXCODES; j++) {
     if (fLookupType[j]==kDataMember || fLookupType[j]==kTreeMember)
       throw std::runtime_error("Parsing of object branches not supported yet");
-    
+
+    // VarIndexes subformulas are independent (do not share the manager with this) -> just replace
     for (Int_t k = 0; k<kMAXFORMDIM; k++) {
       if (fVarIndexes[j][k]) {
         auto* tmp{fVarIndexes[j][k]};
@@ -27,6 +42,7 @@ TTreeFormulaCached::TTreeFormulaCached(char const* _name, char const* _formula, 
       }
     }
 
+    // Same goes for ExternalCuts
     if (j<fNval && fCodes[j]<0) {
       if (fExternalCuts.At(j)) {
         auto* gcut{static_cast<TCutG*>(fExternalCuts.At(j))};
@@ -42,20 +58,41 @@ TTreeFormulaCached::TTreeFormulaCached(char const* _name, char const* _formula, 
     }
   }
 
-  for(Int_t k=0;k<fNoper;k++) {
+  // At this point, this formula has a manager fully set up
+  // But the subformulas* are re-added to the manager at Sync time, so we can safely wipe out the current manager and start new
+  // * Entries in fAliases that correspond to actual TTree aliases and to the second expression of Alt$, MinIf$, or MaxIf$ will be
+  auto* newManager{new TTreeFormulaManager()};
+  newManager->Add(this); // fManager of this will be set automatically
+  
+  for (Int_t k = 0; k < fNoper; ++k) {
     if (k >= fAliases.GetEntries())
       break;
-    if (fAliases[k]) {
-      auto* subform{static_cast<TTreeFormula*>(fAliases.UncheckedAt(k))};
-      fAliases[k] = new TTreeFormulaCached(subform->GetName(), subform->GetTitle(), subform->GetTree());
-      delete subform;
-    }
-  }
-}
 
-TTreeFormulaCached::TTreeFormulaCached(char const* _name, char const* _formula, TTree* _tree) :
-  TTreeFormula(_name, _formula, _tree)
-{
+    if (fAliases[k] == nullptr)
+      continue;
+
+    auto* subform{static_cast<TTreeFormula*>(fAliases.UncheckedAt(k))};
+    if (subform->IsA() == TTreeFormulaCached::Class())// already converted
+      continue;
+
+    auto* replacement = new TTreeFormulaCached(subform->GetName(), subform->GetTitle(), subform->GetTree());
+
+    if (k < fAliases.GetEntries() - 1 && fAliases[k + 1] != nullptr) {
+      auto* maybeAlternate{static_cast<TTreeFormula*>(fAliases.UncheckedAt(k + 1))};
+      if (subform->GetManager() == maybeAlternate->GetManager()) {
+        auto* alternate = new TTreeFormulaCached(maybeAlternate->GetName(), maybeAlternate->GetTitle(), maybeAlternate->GetTree());
+        replacement->GetManager()->Add(alternate);
+        replacement->GetManager()->Sync();
+        fAliases[k + 1] = alternate;
+        delete maybeAlternate;
+      }
+    }
+
+    fAliases[k] = replacement;
+    delete subform;
+  }
+
+  fManager->Sync();
 }
 
 Int_t

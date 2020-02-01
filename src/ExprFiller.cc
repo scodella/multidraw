@@ -105,19 +105,16 @@ void
 multidraw::ExprFiller::initialize()
 {
   // Manage all dimensions with a single manager
-  TTreeFormulaManager* manager(nullptr);
+  // manager instance will be owned collectively by the managed formulas (will be deleted when the last formula is deleted)
+  auto* manager{new TTreeFormulaManager()};
   for (auto& expr : compiledExprs_) {
     if (expr->getFormula() == nullptr)
       continue;
 
-    if (manager == nullptr)
-      manager = expr->getFormula()->GetManager();
-    else
-      manager->Add(expr->getFormula());
+    manager->Add(expr->getFormula());
   }
 
-  if (manager != nullptr)
-    manager->Sync();
+  manager->Sync();
 }
 
 void

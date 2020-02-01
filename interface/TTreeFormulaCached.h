@@ -38,6 +38,8 @@ public:
   bool ReplaceLeaf(TString const& from, TString const& to);
 
 private:
+  void ConvertSubformulas();
+
   CachePtr fCache{};
 
   ClassDef(TTreeFormulaCached, 1)

@@ -160,6 +160,8 @@ multidraw::Cut::initialize()
 
   formulaManager->Sync();
 
+  // It's probably more correct to pass the manager to filler here and synchronize all at the same time
+  // Currently Cut and ExprFiller use independent formula managers
   for (auto& filler : fillers_)
     filler->initialize();
 }
