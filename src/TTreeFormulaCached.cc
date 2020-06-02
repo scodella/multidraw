@@ -161,7 +161,7 @@ TTreeFormulaCached::ReplaceLeaf(TString const& _from, TString const& _to)
   for (Int_t j=0; j<kMAXCODES; j++) {
     for (Int_t k = 0; k<kMAXFORMDIM; k++) {
       if (fVarIndexes[j][k]) {
-        replaced = replaced || static_cast<TTreeFormulaCached*>(fVarIndexes[j][k])->ReplaceLeaf(_from, _to);
+        replaced = static_cast<TTreeFormulaCached*>(fVarIndexes[j][k])->ReplaceLeaf(_from, _to) || replaced;
       }
     }
     if (j<fNval && fCodes[j]<0) {
@@ -170,10 +170,10 @@ TTreeFormulaCached::ReplaceLeaf(TString const& _from, TString const& _to)
         auto* fx = static_cast<TTreeFormulaCached*>(gcut->GetObjectX());
         auto* fy = static_cast<TTreeFormulaCached*>(gcut->GetObjectY());
         if (fx) {
-          replaced = replaced || fx->ReplaceLeaf(_from, _to);
+          replaced = fx->ReplaceLeaf(_from, _to) || replaced;
         }
         if (fy) {
-          replaced = replaced || fy->ReplaceLeaf(_from, _to);
+          replaced = fy->ReplaceLeaf(_from, _to) || replaced;
         }
       }
     }
@@ -189,7 +189,7 @@ TTreeFormulaCached::ReplaceLeaf(TString const& _from, TString const& _to)
     case kMaxIf:
       {
         auto* subform = static_cast<TTreeFormulaCached*>(fAliases.UncheckedAt(k));
-        replaced = replaced || subform->ReplaceLeaf(_from, _to);
+        replaced = subform->ReplaceLeaf(_from, _to) || replaced;
         break;
       }
     case kDefinedVariable:
@@ -202,7 +202,7 @@ TTreeFormulaCached::ReplaceLeaf(TString const& _from, TString const& _to)
           case kMax:
             {
               auto* subform = static_cast<TTreeFormulaCached*>(fAliases.UncheckedAt(k));
-              replaced = replaced || subform->ReplaceLeaf(_from, _to);
+              replaced = subform->ReplaceLeaf(_from, _to) || replaced;
               break;
             }
           default:
