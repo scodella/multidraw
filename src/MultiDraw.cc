@@ -802,15 +802,28 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
 
       int multiplicity(0);
 
+      if (printLevel >= 1)
+        std::cout << " Adding alias " << name;
+
       if (varspec.sourceExpr->getFormula() != nullptr) {
+        if (printLevel >= 1)
+          std::cout << " = " << exprSource.getFormula();
+
         auto* formula(varspec.sourceExpr->getFormula());
         auto* formulaManager(formula->GetManager());
         formulaManager->Sync();
 
         multiplicity = formulaManager->GetMultiplicity();
       }
-      else
+      else {
         multiplicity = varspec.sourceExpr->getFunction()->getMultiplicity();
+
+        if (printLevel >= 1)
+          std::cout << " = [" << varspec.sourceExpr->getFunction()->getName();
+      }
+
+      if (printLevel >= 1)
+        std::cout << " (multiplicity " << multiplicity << ")" << std::endl;
 
       if (multiplicity == 0) {
         // singlet branch
@@ -865,6 +878,9 @@ multidraw::MultiDraw::executeOne_(long _nEntries, unsigned long _firstEntry, TCh
       cuts.emplace_back(std::move(namecut.second));
       cuts.back()->setPrintLevel(printLevel);
       cuts.back()->bindTree(library, flibrary);
+
+      if (printLevel >= 1)
+        std::cout << "Initializing cut \"" << namecut.first << "\"" << std::endl;
 
       cuts.back()->initialize();
     }
