@@ -1,10 +1,10 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import os
 import sys
 import glob
 from argparse import ArgumentParser
-
+ 
 argParser = ArgumentParser(description = 'Generate LinkDef.h')
 argParser.add_argument('--cmssw', '-C', action = 'store_true', dest = 'cmssw', help = 'Write the LinkDef with include paths relative to $CMSSW_BASE/src. Write a BuildFile too.')
 
@@ -19,7 +19,7 @@ thisdir = os.path.dirname(os.path.realpath(__file__))
 #  - Standalone: to obj/ so that Makefile treats it as a temporary
 
 if args.cmssw:
-    if int(os.environ['CMSSW_VERSION'].split('_')[1]) < 10:
+    if int(os.environ['CMSSW_VERSION'].split('_')[1]) != 10:
         # older SCRAM version cannot handle LinkDef properly -> we do it manually below
         linkdef_path = 'interface/LinkDef.h'
     else:
@@ -84,7 +84,7 @@ if args.cmssw:
         out.write('  <lib name="1"/>\n')
         out.write('</export>\n')
 
-    if int(os.environ['CMSSW_VERSION'].split('_')[1]) < 10:
+    if int(os.environ['CMSSW_VERSION'].split('_')[1]) != 10:
         # For Older CMSSW, we need to perform the dictionary generation (rootcling) by ourselves
 
         import subprocess
@@ -108,7 +108,7 @@ if args.cmssw:
         # ROOT include path
         proc = subprocess.Popen(['root-config', '--incdir'], stdout = subprocess.PIPE, stderr = subprocess.PIPE)
         root_inc = proc.communicate()[0].strip()
-        cmd.append('-I' + root_inc)
+        cmd.append('-I' + root_inc.decode())
 
         # Header files to include (without these the dictionary .cc file doesn't compile)
         for fname in os.listdir(thisdir + '/interface'):

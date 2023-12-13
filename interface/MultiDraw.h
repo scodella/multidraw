@@ -22,6 +22,8 @@
 #include <tuple>
 #include <array>
 
+#include <set> 
+
 namespace multidraw {
 
   //! A handy class to fill multiple histograms in one pass over a TChain using string expressions.

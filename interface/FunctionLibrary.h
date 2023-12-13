@@ -11,7 +11,7 @@
 #include <unordered_map>
 #include <memory>
 #include <functional>
-
+ 
 namespace multidraw {
 
   // Wrappers to facilitate replaceAll() of FunctionLibrary
@@ -194,6 +194,8 @@ multidraw::FunctionLibrary::bindBranch(TTreeReaderArray<T>*& _reader, char const
 
 typedef TTreeReaderArray<Float_t> FloatArrayReader;
 typedef TTreeReaderValue<Float_t> FloatValueReader;
+typedef TTreeReaderArray<Double_t> DoubleArrayReader;
+typedef TTreeReaderValue<Double_t> DoubleValueReader;
 typedef TTreeReaderArray<Int_t> IntArrayReader;
 typedef TTreeReaderValue<Int_t> IntValueReader;
 typedef TTreeReaderArray<Bool_t> BoolArrayReader;
@@ -202,9 +204,13 @@ typedef TTreeReaderArray<UChar_t> UCharArrayReader;
 typedef TTreeReaderValue<UChar_t> UCharValueReader;
 typedef TTreeReaderArray<UInt_t> UIntArrayReader;
 typedef TTreeReaderValue<UInt_t> UIntValueReader;
+typedef TTreeReaderArray<Long64_t> LongArrayReader;
+typedef TTreeReaderValue<Long64_t> LongValueReader;
 typedef TTreeReaderValue<ULong64_t> ULong64ValueReader;
 typedef std::unique_ptr<FloatArrayReader> FloatArrayReaderPtr;
 typedef std::unique_ptr<FloatValueReader> FloatValueReaderPtr;
+typedef std::unique_ptr<DoubleArrayReader> DoubleArrayReaderPtr;
+typedef std::unique_ptr<DoubleValueReader> DoubleValueReaderPtr;
 typedef std::unique_ptr<IntArrayReader> IntArrayReaderPtr;
 typedef std::unique_ptr<IntValueReader> IntValueReaderPtr;
 typedef std::unique_ptr<BoolArrayReader> BoolArrayReaderPtr;
@@ -213,6 +219,8 @@ typedef std::unique_ptr<UCharArrayReader> UCharArrayReaderPtr;
 typedef std::unique_ptr<UCharValueReader> UCharValueReaderPtr;
 typedef std::unique_ptr<UIntArrayReader> UIntArrayReaderPtr;
 typedef std::unique_ptr<UIntValueReader> UIntValueReaderPtr;
+typedef std::unique_ptr<LongArrayReader> LongArrayReaderPtr;
+typedef std::unique_ptr<LongValueReader> LongValueReaderPtr;
 typedef std::unique_ptr<ULong64ValueReader> ULong64ValueReaderPtr;
 
 #endif
